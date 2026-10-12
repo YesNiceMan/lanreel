@@ -1,0 +1,7 @@
+# 运行时数据：数据库与入库的素材文件
+data/
+
+# 本地噪音
+.DS_Store
+*.log
+node_modules/

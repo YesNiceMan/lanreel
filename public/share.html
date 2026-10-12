@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>放映中 · LanReel</title>
+    <meta name="description" content="局域网共享素材夹：打开即看，勾选状态，点开写备注。" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/tokens.css" />
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/views.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+            <path d="M9 6.5v11l8.5-5.5z" />
+          </svg>
+        </span>
+        <span>LanReel<span class="accent-text">.</span></span>
+      </a>
+      <span class="pill" data-mount="live-status">连接中</span>
+      <span class="grow"></span>
+      <button class="btn btn--sm" data-action="who" type="button"></button>
+      <button class="btn btn--icon btn--ghost" data-action="theme" type="button" aria-label="切换明暗主题"></button>
+    </header>
+
+    <main class="shell">
+      <section class="sharehead" data-mount="head">
+        <div class="col">
+          <p class="eyebrow">局域网共享中 · 无需下载</p>
+          <h1 class="sharehead__title" data-mount="title">正在打开素材夹…</h1>
+          <p class="muted" data-mount="desc"></p>
+        </div>
+        <div class="sharehead__meta" data-mount="meta"></div>
+      </section>
+
+      <section class="section">
+        <div data-mount="bar"></div>
+        <div class="grid grid--tight" data-mount="grid"></div>
+      </section>
+    </main>
+
+    <footer class="foot shell">
+      <span>文件不出本机 · 你的勾选与备注只写回这台电脑</span>
+      <a class="link-btn" href="/">回到素材库</a>
+    </footer>
+
+    <div class="dock" data-mount="dock"></div>
+    <script type="module" src="/js/share.js"></script>
+  </body>
+</html>

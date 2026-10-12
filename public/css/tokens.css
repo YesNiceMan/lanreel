@@ -1,0 +1,202 @@
+/* ============================================================================
+   LanReel · Design Tokens
+   唯一的设计来源：颜色 / 字号 / 间距 / 圆角 / 阴影 / 动效
+   配色一律用平色（single flat accent + 中性灰阶），全站不使用渐变与彩色光晕。
+   任何组件都不得写死数值，只能引用令牌。亮暗主题共用同一套令牌名。
+   ========================================================================== */
+
+:root {
+  /* ── 颜色 · 单一强调色（teal 一色相，不做多色相渐变）─────────────────── */
+  --accent: #0f766e;
+  --accent-hover: #115e59;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4f2ef;
+  --accent-line: rgba(15, 118, 110, 0.3);
+
+  /* ── 颜色 · 中性（亮色为默认，暗色在下方重新赋值）────────────────────── */
+  --canvas: #f4f7f7;
+  --surface-1: #ffffff;
+  --surface-2: #eef3f3;
+  --surface-3: #e0e8e8;
+  --surface-veil: rgba(255, 255, 255, 0.86);
+  --surface-glass: rgba(13, 32, 36, 0.045);
+  --surface-glass-strong: rgba(13, 32, 36, 0.08);
+  --line-soft: rgba(13, 32, 36, 0.09);
+  --line-strong: rgba(13, 32, 36, 0.18);
+
+  --stage: #0b0f11;
+  --ink-100: #0c1a1e;
+  --ink-80: rgba(12, 26, 30, 0.82);
+  --ink-60: rgba(12, 26, 30, 0.62);
+  --ink-40: rgba(12, 26, 30, 0.46);
+  --ink-20: rgba(12, 26, 30, 0.26);
+
+  /* ── 颜色 · 语义与评审状态（跨主题保持稳定）──────────────────────────── */
+  --tone-info: #0284c7;
+  --tone-success: #059669;
+  --tone-warn: #c2740a;
+  --tone-danger: #d4405f;
+  --tone-neutral: #64748b;
+
+  --status-unset: var(--tone-neutral);
+  --status-todo: var(--tone-info);
+  --status-short: var(--tone-success);
+  --status-revise: var(--tone-warn);
+  --status-drop: var(--tone-danger);
+
+  /* ── 字号 · fluid scale ──────────────────────────────────────────────── */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
+  --text-xl: clamp(1.25rem, 1.1rem + 0.7vw, 1.6rem);
+  --text-2xl: clamp(1.5rem, 1.25rem + 1.1vw, 2.1rem);
+  --text-3xl: clamp(1.9rem, 1.5rem + 1.8vw, 2.8rem);
+  --text-hero: clamp(2.4rem, 1.6rem + 3.4vw, 4.4rem);
+
+  --leading-tight: 1.12;
+  --leading-snug: 1.35;
+  --leading-normal: 1.62;
+  --tracking-tight: -0.022em;
+  --tracking-flat: 0;
+  --tracking-wide: 0.14em;
+
+  --font-sans: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Source Han Sans SC', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'Menlo', monospace;
+
+  /* 排版角色：一行搞定一个常用组合 */
+  --type-eyebrow: 600 var(--text-2xs)/1 var(--font-sans);
+  --type-label: 600 var(--text-sm)/1.2 var(--font-sans);
+  --type-body: 400 var(--text-base)/var(--leading-normal) var(--font-sans);
+  --type-title: 700 var(--text-xl)/var(--leading-snug) var(--font-sans);
+  --type-display: 800 var(--text-hero)/var(--leading-tight) var(--font-sans);
+
+  /* ── 间距 · 4px 基准，页面留白更松 ───────────────────────────────────── */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 2rem;
+  --space-8: 2.5rem;
+  --space-9: 3.5rem;
+  --space-10: 4.5rem;
+  --space-11: 6rem;
+  --space-12: 8rem;
+
+  --gutter: clamp(var(--space-5), 4.5vw, var(--space-10));
+  --stack: var(--space-6);
+  --maxw: 1600px;
+  --rail: 30rem;
+
+  /* ── 圆角 · 收敛上限，大面积更平整 ───────────────────────────────────── */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 28px;
+  --radius-full: 999px;
+
+  /* ── 阴影 · 冷灰低透明度，只做层次不做光晕 ───────────────────────────── */
+  --shadow-1: 0 1px 2px rgba(12, 26, 30, 0.06);
+  --shadow-2: 0 4px 14px -6px rgba(12, 26, 30, 0.12);
+  --shadow-3: 0 10px 28px -12px rgba(12, 26, 30, 0.16);
+  --shadow-4: 0 22px 48px -24px rgba(12, 26, 30, 0.22);
+  --shadow-5: 0 40px 80px -32px rgba(12, 26, 30, 0.28);
+  --inner-hi: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --inner-lo: inset 0 -1px 0 rgba(12, 26, 30, 0.06);
+
+  /* ── 动效 ────────────────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-glide: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-1: 120ms;
+  --duration-2: 200ms;
+  --duration-3: 340ms;
+  --duration-4: 560ms;
+  --duration-5: 900ms;
+  --stagger: 38ms;
+
+  --motion-hover: translateY(-3px);
+  --motion-press: scale(0.975);
+  --motion-enter: translateY(14px);
+
+  /* ── 其他 ────────────────────────────────────────────────────────────── */
+  --blur-glass: 14px;
+  --ring: 0 0 0 3px color-mix(in oklab, var(--accent) 32%, transparent);
+  --z-base: 1;
+  --z-sticky: 40;
+  --z-dock: 60;
+  --z-modal: 80;
+  --z-toast: 100;
+  --transition-theme: background-color var(--duration-3) var(--ease-out), color var(--duration-3) var(--ease-out),
+    border-color var(--duration-3) var(--ease-out);
+}
+
+/* ── 暗色主题：同名令牌重新赋值（放映环境更护眼）───────────────────────── */
+[data-theme='dark'] {
+  --accent: #2dd4bf;
+  --accent-hover: #5eead4;
+  --accent-ink: #04211d;
+  --accent-soft: rgba(45, 212, 191, 0.14);
+  --accent-line: rgba(45, 212, 191, 0.34);
+
+  --canvas: #0a0f11;
+  --surface-1: #11181a;
+  --surface-2: #182225;
+  --surface-3: #222e32;
+  --surface-veil: rgba(17, 24, 26, 0.82);
+  --surface-glass: rgba(255, 255, 255, 0.05);
+  --surface-glass-strong: rgba(255, 255, 255, 0.09);
+  --line-soft: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.17);
+
+  --ink-100: #e9f1f1;
+  --ink-80: rgba(233, 241, 241, 0.82);
+  --ink-60: rgba(233, 241, 241, 0.62);
+  --ink-40: rgba(233, 241, 241, 0.44);
+  --ink-20: rgba(233, 241, 241, 0.24);
+
+  --tone-info: #38bdf8;
+  --tone-success: #34d399;
+  --tone-warn: #fbbf24;
+  --tone-danger: #fb7185;
+  --tone-neutral: #94a3b8;
+
+  --inner-hi: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --inner-lo: inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 4px 14px -6px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 10px 28px -12px rgba(0, 0, 0, 0.6);
+  --shadow-4: 0 22px 48px -24px rgba(0, 0, 0, 0.7);
+  --shadow-5: 0 40px 80px -32px rgba(0, 0, 0, 0.8);
+}
+
+/* ── 动效降级：整体收敛 ─────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-1: 1ms;
+    --duration-2: 1ms;
+    --duration-3: 1ms;
+    --duration-4: 1ms;
+    --duration-5: 1ms;
+    --stagger: 0ms;
+    --motion-hover: none;
+    --motion-enter: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

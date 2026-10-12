@@ -1,0 +1,21 @@
+{
+  "name": "lanreel",
+  "version": "1.7.0",
+  "description": "局域网素材放映厅 — 本地文件夹直接入库，同网链接即时浏览、勾选评审、批注备注，无需上传云端。",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "check": "node --check server/index.js"
+  },
+  "keywords": [
+    "lan",
+    "video",
+    "media-review",
+    "no-cloud"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,576 @@
+/* ============================================================================
+   LanReel · Views — 素材库首页 / 分享放映页
+   ========================================================================== */
+
+/* ── 首屏 ───────────────────────────────────────────────────────────────── */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  gap: var(--space-9);
+  align-items: center;
+  padding: var(--space-10) 0 var(--space-8);
+}
+
+.hero__copy {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 34ch;
+}
+
+.hero__title {
+  font: var(--type-display);
+  letter-spacing: var(--tracking-tight);
+}
+
+.hero__lede {
+  font-size: var(--text-lg);
+  color: var(--ink-60);
+  line-height: var(--leading-normal);
+}
+
+.hero__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+  margin-top: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line-soft);
+}
+
+.stat {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.stat b {
+  font: 800 var(--text-xl)/1 var(--font-mono);
+  letter-spacing: var(--tracking-tight);
+}
+
+.stat span {
+  font: var(--type-eyebrow);
+  letter-spacing: var(--tracking-wide);
+  color: var(--ink-40);
+}
+
+/* ── 入库面板：两种入口并排 ────────────────────────────────────────────── */
+.intake {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-2xl);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-3);
+}
+
+.intake__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.intake__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.mode {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1.5px dashed transparent;
+  border-radius: var(--radius-xl);
+  background: var(--surface-2);
+  transition: border-color var(--duration-3) var(--ease-out), background-color var(--duration-3) var(--ease-out);
+}
+
+.mode:hover {
+  border-color: var(--accent-line);
+}
+
+.mode[data-drag='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mode__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.mode__head h3 {
+  font: var(--type-label);
+  font-size: var(--text-md);
+}
+
+.mode__icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.mode__note {
+  font-size: var(--text-2xs);
+  color: var(--ink-40);
+}
+
+/* 真正干活的是按钮，原生 file 控件只负责接收，必须藏起来 */
+input[type='file'][data-file-input] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mount__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.mount__row .input {
+  flex: 1 1 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 70rem) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-7);
+    padding-top: var(--space-8);
+  }
+
+  .hero__copy {
+    max-width: 46ch;
+  }
+}
+
+@media (max-width: 46rem) {
+  .intake__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── 上传队列 ───────────────────────────────────────────────────────────── */
+.queue {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  max-height: min(30vh, 22rem);
+  overflow: auto;
+  padding-right: var(--space-1);
+}
+
+.queue__row {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  animation: fade-up var(--duration-3) var(--ease-glide) both;
+  font-size: var(--text-sm);
+}
+
+.queue__row b {
+  font-weight: 600;
+}
+
+.queue__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--ink-40);
+  font: 500 var(--text-2xs)/1 var(--font-mono);
+}
+
+.queue__bar {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.queue__bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width var(--duration-2) linear;
+}
+
+.queue__row[data-state='done'] .queue__bar i {
+  background: var(--tone-success);
+}
+
+.queue__row[data-state='error'] {
+  border-color: color-mix(in oklab, var(--tone-danger) 45%, transparent);
+}
+
+.queue__row[data-state='error'] .queue__bar i {
+  background: var(--tone-danger);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-full);
+  animation: spin 720ms linear infinite;
+}
+
+/* ── 区块头 + 工具栏 ───────────────────────────────────────────────────── */
+.section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.section .toolbar {
+  margin-top: var(--space-4);
+}
+
+/* ── 素材夹卡片 ─────────────────────────────────────────────────────────── */
+.bundles {
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr));
+}
+
+.bundles[data-mode='list'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bundle {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  padding: 0;
+  /* 不能 overflow:hidden：卡片右上角的「更多」菜单要探出卡片，圆角改由封面自己裁 */
+  overflow: visible;
+}
+
+.bundle__mosaic {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 5.2rem;
+  gap: 2px;
+  background: var(--surface-3);
+  border-radius: calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0 0;
+  overflow: hidden;
+}
+
+.bundle__mosaic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(1.05);
+  transition: transform var(--duration-5) var(--ease-glide);
+}
+
+.bundle:hover .bundle__mosaic img {
+  transform: scale(1.06);
+}
+
+.bundle__mosaic i {
+  background: var(--surface-2);
+}
+
+.bundle__body {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+  min-width: 0;
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+.bundle__title {
+  font: var(--type-title);
+}
+
+.bundle__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  font: 500 var(--text-xs)/1.4 var(--font-mono);
+  color: var(--accent);
+  overflow: hidden;
+}
+
+.bundle__link:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-2);
+}
+
+.bundle__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* 一排放得下：动作压到 4 个（重命名/导出/删除进「更多」），间距与内边距同步收紧 */
+.bundle__foot .btn--sm {
+  padding: var(--space-2) var(--space-3);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* 评审进度条（按状态分段）*/
+.tally {
+  display: flex;
+  height: 6px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: var(--surface-3);
+  box-shadow: var(--inner-hi);
+}
+
+.tally i {
+  height: 100%;
+  transition: width var(--duration-4) var(--ease-out);
+}
+
+.tally i[data-status='todo'] { background: var(--status-todo); }
+.tally i[data-status='short'] { background: var(--status-short); }
+.tally i[data-status='revise'] { background: var(--status-revise); }
+.tally i[data-status='drop'] { background: var(--status-drop); }
+
+/* ── 工具栏 ─────────────────────────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklab, var(--surface-1) 80%, transparent);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-2);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.filter {
+  padding: var(--space-2) var(--space-4);
+  font: var(--type-label);
+  color: var(--ink-60);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--duration-2) var(--ease-out);
+}
+
+.filter:hover {
+  color: var(--ink-100);
+  border-color: var(--line-strong);
+}
+
+.filter[aria-pressed='true'] {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: var(--shadow-1);
+}
+
+/* ── 素材条目 ───────────────────────────────────────────────────────────── */
+.item {
+  --tone: var(--ink-20);
+  position: relative;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.item__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  right: var(--space-2);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.item__top > .check {
+  pointer-events: auto;
+}
+
+.item__badges {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.item__name {
+  font: 600 var(--text-sm)/1.35 var(--font-sans);
+  word-break: break-all;
+}
+
+.item__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--ink-40);
+}
+
+.item__notes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  color: var(--accent);
+}
+
+.item__who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--tone);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-7) 0;
+}
+
+.section__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+/* ── 分享页头部 ─────────────────────────────────────────────────────────── */
+.sharehead {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-8) 0 var(--space-6);
+}
+
+.sharehead__title {
+  font: var(--type-display);
+}
+
+.sharehead__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  color: var(--ink-60);
+  font-size: var(--text-sm);
+}
+
+.livetag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--surface-glass);
+  border: 1px solid var(--line-soft);
+  font: 600 var(--text-2xs)/1 var(--font-mono);
+  letter-spacing: var(--tracking-wide);
+  color: var(--tone-success);
+}
+
+/* 断线时别继续绿着 */
+.livetag[data-live='false'] {
+  color: var(--tone-warn);
+  border-color: color-mix(in oklab, var(--tone-warn) 45%, transparent);
+}
+
+/* ── 页脚 ───────────────────────────────────────────────────────────────── */
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-7) 0 var(--space-9);
+  margin-top: var(--space-8);
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink-40);
+  font-size: var(--text-xs);
+}
+
+/* ── 链接弹出卡片 ───────────────────────────────────────────────────────── */
+.linkcard {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.linkcard__url {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font: 600 var(--text-sm)/1.4 var(--font-mono);
+  word-break: break-all;
+  box-shadow: var(--shadow-2);
+}
+
+/* ── 首次进入的入场节奏 ─────────────────────────────────────────────────── */
+.stagger > * {
+  animation: fade-up var(--duration-4) var(--ease-glide) both;
+}
+
+.stagger > *:nth-child(1) { animation-delay: calc(var(--stagger) * 0); }
+.stagger > *:nth-child(2) { animation-delay: calc(var(--stagger) * 1); }
+.stagger > *:nth-child(3) { animation-delay: calc(var(--stagger) * 2); }
+.stagger > *:nth-child(4) { animation-delay: calc(var(--stagger) * 3); }
+.stagger > *:nth-child(5) { animation-delay: calc(var(--stagger) * 4); }
+.stagger > *:nth-child(6) { animation-delay: calc(var(--stagger) * 5); }
+.stagger > *:nth-child(7) { animation-delay: calc(var(--stagger) * 6); }
+.stagger > *:nth-child(8) { animation-delay: calc(var(--stagger) * 7); }
+.stagger > *:nth-child(n + 9) { animation-delay: calc(var(--stagger) * 8); }
