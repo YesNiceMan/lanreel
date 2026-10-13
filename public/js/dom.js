@@ -84,6 +84,8 @@ const PATHS = {
   bolt: 'M13 3L5 13h5l-1 8 8-10h-5z',
   clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3.5 2',
   tag: 'M4 10l6-6h8v8l-6 6zM9 9h.01',
+  sound: 'M4 9.5h3.5L12 6v12l-4.5-3.5H4zM15.5 9.5a3.6 3.6 0 0 1 0 5M18 7a7 7 0 0 1 0 10',
+  mute: 'M4 9.5h3.5L12 6v12l-4.5-3.5H4zM16 10l4.5 4.5M20.5 10L16 14.5',
   more: 'M3.4 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0M10.4 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0M17.4 12a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0',
 };
 
@@ -217,7 +219,9 @@ export function initHints(root = document) {
 export function hint(text, { label = '说明', side = 'top' } = {}) {
   const id = `tip-${Math.random().toString(36).slice(2, 8)}`;
   const btn = h('button', { class: 'tip__btn', type: 'button', 'aria-label': label, 'aria-describedby': id }, '?');
-  const tip = h('span', { class: `tip tip--${side}` }, btn, h('span', { class: 'tip__bubble', id, role: 'tooltip' }, text));
+  // side 可以叠两个方位（如 'bottom right'）：贴边的弹层要同时朝上开、朝内长，否则会被容器裁掉
+  const sides = String(side).split(/\s+/).filter(Boolean).map((s) => `tip--${s}`).join(' ');
+  const tip = h('span', { class: `tip ${sides}` }, btn, h('span', { class: 'tip__bubble', id, role: 'tooltip' }, text));
   bindTip(tip, btn);
   return tip;
 }
@@ -330,29 +334,35 @@ let scrimDepth = 0;
 export function openScrim(content, { onClose, cls = '' } = {}) {
   const scrim = h('div', { class: `scrim ${cls}`.trim() });
   let closed = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    document.removeEventListener('keydown', onKey);
-    scrim.remove();
-    scrimDepth = Math.max(0, scrimDepth - 1);
-    if (!scrimDepth) document.body.style.overflow = '';
-    onClose?.();
+  // close 挂在返回对象上：Esc、点空白、按钮都走 api.close()，
+  // 这样调用方包装的那一层（关同步、停媒体、摘监听）不会被绕过
+  const api = {
+    scrim,
+    content,
+    close() {
+      if (closed) return;
+      closed = true;
+      document.removeEventListener('keydown', onKey);
+      scrim.remove();
+      scrimDepth = Math.max(0, scrimDepth - 1);
+      if (!scrimDepth) document.body.style.overflow = '';
+      onClose?.();
+    },
   };
   const onKey = (e) => {
     if (e.key !== 'Escape') return;
     e.stopPropagation();
     // 先让弹层内容消费 Esc（例如清空选择），没人拦截才关闭
     if (!content.dispatchEvent(new CustomEvent('escape', { cancelable: true }))) return;
-    close();
+    api.close();
   };
   scrim.addEventListener('pointerdown', (e) => {
-    if (e.target === scrim) close();
+    if (e.target === scrim) api.close();
   });
   document.addEventListener('keydown', onKey, true);
   scrim.append(content);
   scrimDepth += 1;
   document.body.style.overflow = 'hidden';
   document.body.append(scrim);
-  return { scrim, close, content };
+  return api;
 }

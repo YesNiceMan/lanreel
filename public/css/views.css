@@ -14,7 +14,7 @@
 .hero__copy {
   display: grid;
   gap: var(--space-4);
-  max-width: 34ch;
+  max-width: 38ch;
 }
 
 .hero__title {
@@ -29,9 +29,11 @@
 }
 
 .hero__stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4) var(--space-6);
+  /* 六项统计按列对齐：flex 参差换行时，窄项和「10.36 GB」这种宽项挤在一起，
+     提示气泡也更容易压到旁边的数字。列宽留够 9rem，「1 小时 42 分」才不会被压断 */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-5) var(--space-4);
   margin-top: var(--space-3);
   padding-top: var(--space-5);
   border-top: 1px solid var(--line-soft);
@@ -302,9 +304,11 @@ input[type='file'][data-file-input] {
 }
 
 .bundle__body {
-  display: grid;
+  /* 纵向 flex 而不是 grid：这样 .bundle__foot 的 margin-top:auto 才真的把动作排钉到卡片底部，
+     两张卡片有没有简介、状态胶囊几颗，按钮都能对齐 */
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
-  align-content: start;
   min-width: 0;
   padding: 0 var(--space-5) var(--space-5);
 }
@@ -336,6 +340,7 @@ input[type='file'][data-file-input] {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
+  margin-top: auto;
 }
 
 /* 一排放得下：动作压到 4 个（重命名/导出/删除进「更多」），间距与内边距同步收紧 */
@@ -563,6 +568,13 @@ input[type='file'][data-file-input] {
 /* ── 首次进入的入场节奏 ─────────────────────────────────────────────────── */
 .stagger > * {
   animation: fade-up var(--duration-4) var(--ease-glide) both;
+  /* animation-fill-mode: both 会让 animation-name 一直非 none，每个子项因此成为一个层叠上下文；
+     里面的提示气泡就会被后面的兄弟（比如统计块里挨着的数字）压住 */
+  position: relative;
+}
+
+.stagger > *:has(.tip:hover, .tip[data-open='true'], .tip__btn:focus-visible) {
+  z-index: var(--z-modal);
 }
 
 .stagger > *:nth-child(1) { animation-delay: calc(var(--stagger) * 0); }

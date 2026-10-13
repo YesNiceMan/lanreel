@@ -25,6 +25,15 @@
   --line-strong: rgba(13, 32, 36, 0.18);
 
   --stage: #0b0f11;
+  /* 放映舞台在两种主题下都是暗色，播放条配色不能跟着亮色主题走 */
+  --stage-ink: rgba(255, 255, 255, 0.88);
+  --stage-ink-dim: rgba(255, 255, 255, 0.56);
+  --stage-surface: rgba(255, 255, 255, 0.14);
+  --stage-surface-strong: rgba(255, 255, 255, 0.24);
+  --stage-line: rgba(255, 255, 255, 0.22);
+  --stage-accent: #2dd4bf;
+  --stage-accent-soft: rgba(45, 212, 191, 0.22);
+  --stage-accent-line: rgba(45, 212, 191, 0.45);
   --ink-100: #0c1a1e;
   --ink-80: rgba(12, 26, 30, 0.82);
   --ink-60: rgba(12, 26, 30, 0.62);

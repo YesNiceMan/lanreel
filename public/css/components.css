@@ -971,6 +971,7 @@ kbd,
 
 .stage__media {
   position: relative;
+  container-type: inline-size;
   display: grid;
   place-items: center;
   padding: var(--space-5);
@@ -1101,6 +1102,36 @@ kbd,
   transform: translateY(-1px);
 }
 
+/* 标记就是「还没写正文的时间点」，配色跟轨道上的琥珀刻度一致 */
+.pill--mark {
+  --tone: var(--tone-warn);
+  color: var(--tone-warn);
+  background: color-mix(in oklab, var(--tone-warn) 16%, transparent);
+  border-color: color-mix(in oklab, var(--tone-warn) 40%, transparent);
+}
+
+.pill--mark:hover {
+  background: color-mix(in oklab, var(--tone-warn) 26%, transparent);
+}
+
+.note--mark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-style: dashed;
+  background: color-mix(in oklab, var(--tone-warn) 6%, var(--surface-2));
+}
+
+.note--mark > .clip {
+  min-width: 0;
+  font-size: var(--text-2xs);
+}
+
+.note--mark .btn--sm {
+  padding: var(--space-1) var(--space-3);
+}
+
 .tc {
   display: inline-flex;
   align-items: center;
@@ -1127,38 +1158,337 @@ kbd,
   background: var(--accent-soft);
 }
 
-/* 备注刻度条：贴在播放器下方，标出每条带时间点的备注 */
-.timeline {
-  position: relative;
+/* ── 放映厅播放条：自绘时间轴，进度 / 备注刻度 / 打点同一条轨道 ────────── */
+.player {
+  display: grid;
+  place-items: center;
+  gap: var(--space-3);
   width: 100%;
-  height: 14px;
-  flex: none;
-  border-radius: var(--radius-full);
-  background: var(--surface-2);
-  box-shadow: inset 0 0 0 1px var(--line-soft);
+  min-height: 0;
 }
 
-.timeline[hidden] {
+.player > video,
+.player > audio,
+.player > .col {
+  min-width: 0;
+}
+
+.transport {
+  /* 播放条永远坐在暗色舞台上：把按钮要用的令牌在这一段里换成舞台配色，
+     否则浅色模式下 --ink-100 是近黑，图标按钮会直接糊进黑底里看不见 */
+  --ink-100: var(--stage-ink);
+  --ink-80: var(--stage-ink);
+  --ink-40: var(--stage-ink-dim);
+  --accent: var(--stage-accent);
+  --accent-soft: var(--stage-accent-soft);
+  --accent-line: var(--stage-accent-line);
+  --surface-glass: var(--stage-surface);
+  --surface-glass-strong: var(--stage-surface-strong);
+  --line-soft: var(--stage-line);
+  --line-strong: var(--stage-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 100%;
+}
+
+.transport__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.transport__btn {
+  flex: none;
+  padding: var(--space-2);
+}
+
+.transport__btn[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.transport__times {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.transport__code {
+  color: var(--stage-ink);
+}
+
+.transport__code--total,
+.transport__sep {
+  color: var(--stage-ink-dim);
+}
+
+.transport__speed {
+  flex: none;
+  min-width: 3.4rem;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.transport__speed--odd {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.transport__mark {
+  flex: none;
+}
+
+.transport__volwrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+
+.transport__vol {
+  width: 4.5rem;
+  accent-color: var(--stage-accent);
+  cursor: pointer;
+}
+
+/* 轨道独占一行，控件排在第二行 */
+.transport__row {
+  row-gap: var(--space-2);
+}
+
+/* 舞台窄下来（双栏时媒体列只有半屏）就别让控件挤成三行：
+   音量条收进静音按钮，打点只留图标 */
+@container (max-width: 40rem) {
+  .transport__volwrap .transport__vol {
+    display: none;
+  }
+
+  .transport__wide {
+    display: none;
+  }
+
+  .transport__mark {
+    padding: var(--space-2);
+  }
+}
+
+/* 轨道：命中区 26px，可见的轨只有 6px，悬停时加粗 */
+.track {
+  position: relative;
+  height: 26px;
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  cursor: ew-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.track::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: var(--radius-full);
+  background: var(--stage-surface);
+  transition: height var(--duration-2) var(--ease-out), margin-top var(--duration-2) var(--ease-out);
+}
+
+.track:hover::before,
+.track:focus-visible::before {
+  height: 10px;
+  margin-top: -5px;
+}
+
+.track:focus-visible {
+  box-shadow: var(--ring);
+  border-radius: var(--radius-sm);
+}
+
+.track__fill {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 6px;
+  margin-top: -3px;
+  width: 0;
+  border-radius: var(--radius-full);
+  background: var(--stage-accent);
+  pointer-events: none;
+  transition: height var(--duration-2) var(--ease-out), margin-top var(--duration-2) var(--ease-out);
+}
+
+.track:hover .track__fill,
+.track:focus-visible .track__fill {
+  height: 10px;
+  margin-top: -5px;
+}
+
+.track__head {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: var(--radius-full);
+  background: var(--stage-ink);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--stage-accent) 70%, transparent);
+  pointer-events: none;
+  transition: transform var(--duration-1) var(--ease-out);
+}
+
+.track:hover .track__head,
+.track:active .track__head {
+  transform: scale(1.18);
+}
+
+.track__ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.track__snap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: var(--radius-full);
+  background: var(--tone-warn);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--stage) 60%, transparent);
+  pointer-events: none;
+}
+
+.track__snap[hidden] {
   display: none;
 }
 
-.timeline__tick {
+.track__peek {
   position: absolute;
-  top: 2px;
-  width: 4px;
-  height: 10px;
-  padding: 0;
-  margin-left: -2px;
-  border: 0;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-  cursor: pointer;
-  transition: transform var(--duration-2) var(--ease-spring), height var(--duration-2) var(--ease-out);
+  bottom: calc(100% + 2px);
+  left: 0;
+  z-index: var(--z-dock);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--stage-line);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--stage) 82%, transparent);
+  color: var(--stage-ink);
+  font: 600 var(--text-2xs)/1.4 var(--font-mono);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
-.timeline__tick:hover {
+.track__peek[hidden] {
+  display: none;
+}
+
+/* 备注点与标记点同一条道，只靠颜色和头部分辨，不再上下叠放 */
+.tick {
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 18px;
+  margin: -9px 0 0 -1.5px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+  transition: transform var(--duration-2) var(--ease-spring), width var(--duration-2) var(--ease-out);
+}
+
+.tick::after {
+  content: '';
+  position: absolute;
+  inset: -6px -5px;
+}
+
+.tick:hover {
   transform: scaleX(2.2);
+}
+
+.tick--note {
+  background: var(--stage-accent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--stage) 55%, transparent);
+}
+
+.tick--mark {
   height: 14px;
+  margin-top: -7px;
+  background: var(--tone-warn);
+  cursor: grab;
+}
+
+.tick--mark::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  margin-left: -3.5px;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 5px solid var(--tone-warn);
+}
+
+.tick--mark:active {
+  cursor: grabbing;
+}
+
+/* 影院模式：放映厅铺满窗口，画面换成视口高度来算 */
+.sheet--theater {
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.sheet--theater .stage__media video,
+.sheet--theater .stage__media img {
+  max-height: calc(100dvh - 17rem);
+}
+
+/* 真全屏：只留画面和播放条 */
+.player:fullscreen {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 0;
+  width: 100vw;
+  height: 100dvh;
+  background: var(--stage);
+}
+
+.player:fullscreen video {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  object-fit: contain;
+}
+
+.player:fullscreen .transport {
+  padding: var(--space-3) var(--space-6) var(--space-5);
+  background: color-mix(in oklab, var(--stage) 82%, transparent);
 }
 
 .note {

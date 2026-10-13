@@ -130,7 +130,8 @@ async function boot() {
   review.setItems(bundle.items);
 
   sync = connectSync({
-    ref: bundle.id,
+    // 服务端按分享码放行订阅（内部 id 不算凭证），同事只能收到自己这条链接的事件
+    ref: bundle.token,
     onEvent: (payload) => {
       if (payload.type === 'keepalive') return;
       refresh(payload.itemId ? [payload.itemId] : []).then(() => noteActivity(payload));

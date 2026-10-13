@@ -188,7 +188,9 @@ export function createReview({ host, barHost, dockHost, actor, emptyText = '还�
         selected.clear();
         anchor = null;
       }
-      render(key !== 'unset' ? [] : ids, { flashAll: true });
+      // 只重画真正改动的那几张：整屏重建会连带把每张缩略图重新解码，
+      // 80 集的夹子点一下状态就闪一次全屏，还是一整个长任务
+      render(ids);
       paintSelection();
       toast(`已把 ${ids.length} 条标记为「${label}」，同网的人同步看到了`, 'ok');
     } catch (err) {
@@ -216,10 +218,10 @@ export function createReview({ host, barHost, dockHost, actor, emptyText = '还�
         h('span', { class: 'thumb__glyph' }, icon('x', 30)),
         h('span', { class: 'thumb__lost' }, '源文件已丢失'));
     }
-    const useImage = item.kind === 'image' || item.hasPoster;
-    const inner = useImage
+    // 只认服务端生成的封面：图片以前回落原图，一张卡片就是几 MB，一屏就是上百 MB
+    const inner = item.posterUrl
       ? h('img', {
-          src: item.posterUrl || item.streamUrl,
+          src: item.posterUrl,
           alt: '',
           loading: 'lazy',
           decoding: 'async',
@@ -324,7 +326,7 @@ export function createReview({ host, barHost, dockHost, actor, emptyText = '还�
   }
 
   /** 增量更新：保留已有 DOM，动画只落在真正变化的卡片上 */
-  function render(changedIds = [], { flashAll = false } = {}) {
+  function render(changedIds = []) {
     const visible = filtered();
     const seen = new Set();
     const fragment = document.createDocumentFragment();
@@ -332,7 +334,7 @@ export function createReview({ host, barHost, dockHost, actor, emptyText = '还�
     visible.forEach((item, index) => {
       seen.add(item.id);
       let node = nodes.get(item.id);
-      const changed = flashAll || changedIds.includes(item.id);
+      const changed = changedIds.includes(item.id);
       if (!node) {
         node = card(item, index);
         node.classList.add('anim-fade-up');

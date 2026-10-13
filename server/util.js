@@ -124,7 +124,7 @@ export function streamToDisk(req, dest, maxBytes) {
 
 /**
  * 请求是不是从这台机器自己发出的？
- * 注意：本机浏览器打开 http://<局域网IP>:8080 时，来源地址是那张网卡的 IP，
+ * 注意：本机浏览器打开 http://<局域网IP>:2026 时，来源地址是那张网卡的 IP，
  * 不是 127.0.0.1，所以只比 loopback 会把机主本人误判成外人。
  */
 export function isLocalMachine(address) {

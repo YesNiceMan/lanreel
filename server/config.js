@@ -11,12 +11,12 @@ function positiveInt(value, fallback) {
 
 export const config = {
   appName: 'LanReel 局域网素材放映厅',
-  version: '1.7.0',
+  version: '1.10.3',
   root,
   publicDir: path.join(root, 'public'),
   dataDir: process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(root, 'data'),
   host: process.env.HOST || '0.0.0.0',
-  port: positiveInt(process.env.PORT, 8080),
+  port: positiveInt(process.env.PORT, 2026),
   maxPortTries: 12,
   // 单个文件上限（MB），默认 4GB
   maxUploadBytes: positiveInt(process.env.MAX_UPLOAD_MB, 4096) * 1024 * 1024,

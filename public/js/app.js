@@ -16,7 +16,7 @@ let totals = { bundles: 0, items: 0, bytes: 0 };
 let storage = { files: 0, onDisk: 0 };
 let limits = { maxUploadBytes: 4 * 1024 ** 3, maxFilesPerBundle: 3000 };
 let lan = [];
-let port = location.port || '8080';
+let port = location.port || '2026';
 let viewers = 0;
 let job = null;
 let onlyOpen = false;
@@ -153,6 +153,11 @@ function bundleCard(bundle) {
   const statusChips = ['short', 'todo', 'revise', 'drop']
     .filter((key) => bundle.stats.statuses[key])
     .map((key) => h('span', { class: `pill pill--status pill--${key}` }, `${STATUS_BY_KEY[key].label} ${bundle.stats.statuses[key]}`));
+  // 没人表态时也占一格：否则评过的夹子和没评的夹子行数不同，卡片里的链接与按钮排不齐
+  const unreviewed = (bundle.stats.total ?? 0) - (bundle.stats.reviewed ?? 0);
+  if (unreviewed > 0) {
+    statusChips.push(h('span', { class: 'pill pill--status pill--unset', title: '还没有人表态' }, `待评审 ${unreviewed}`));
+  }
 
   return h(
     'article',
@@ -174,7 +179,8 @@ function bundleCard(bundle) {
             bundle.stats.missing ? h('span', { class: 'pill pill--status pill--drop', title: `${bundle.stats.missing} 个素材在源目录里已经读不到了` }, `源文件丢失 ${bundle.stats.missing}`) : null)),
         progressRing((bundle.stats.reviewed / Math.max(1, bundle.stats.total)) * 100, '评审完成度')),
       statusTally(bundle.stats),
-      statusChips.length ? h('div', { class: 'chips' }, statusChips) : null,
+      // 没人表态时也占一格：否则评过的夹子和没评的夹子行数不同，卡片里的链接与按钮排不齐
+      h('div', { class: 'chips' }, statusChips.length ? statusChips : h('span', { class: 'pill' }, '还没有素材')),
       bundle.description ? h('p', { class: 'muted', style: 'font-size:var(--text-sm)' }, bundle.description) : null,
       h('a', { class: 'bundle__link', href: link, target: '_blank', rel: 'noopener', title: linkNote() },
         icon('link', 14), h('span', { class: 'clip grow' }, link.replace(/^https?:\/\//, '')), icon('external', 14)),
@@ -256,7 +262,7 @@ async function load() {
     bundles.map(async (b) => {
       try {
         const full = await api.bundle(b.id);
-        b.previews = full.items.slice(0, 4).map((i) => i.posterUrl || (i.kind === 'image' ? i.streamUrl : null));
+        b.previews = full.items.slice(0, 4).map((i) => i.posterUrl);
         b.previewsName = full.items.map((i) => i.name);
       } catch {
         b.previews = [];
@@ -655,7 +661,6 @@ async function openBundle(ref) {
       review.setItems(fresh.items, payload?.itemId ? [payload.itemId] : []);
     },
   });
-  sheet.scrim.addEventListener('pointerdown', () => {});
   const origClose = sheet.close;
   sheet.close = () => {
     sync.close();
@@ -696,9 +701,14 @@ function shortcuts() {
     ['U', '选择本地文件夹入库'],
     ['/', '搜索素材夹'],
     ['1 – 4', '给选中的素材打状态（评审面板内）'],
-    ['← →', '放映厅内切换素材'],
+    ['↑ ↓', '放映厅内切换素材'],
+    ['← →', '放映厅内前后一帧'],
     ['Space', '播放 / 暂停'],
+    ['J / L', '倒放 / 正放，连按加速到 8×（K 停下并复位）'],
+    ['M', '在当前时间点打标记'],
+    ['F', '全屏播放（不支持时退回影院模式）'],
     ['N', '在放映厅写备注'],
+    ['Shift + 点时间轴', '跳到那个时间点并写备注'],
     ['Esc', '关闭弹层'],
   ];
   const owner = ownerInfo

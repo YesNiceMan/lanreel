@@ -7,7 +7,7 @@ const running = new Set();
 export const needsWork = (i) =>
   (i.kind === 'video' && !i.hasPoster) ||
   (i.kind === 'audio' && !i.duration) ||
-  (i.kind === 'image' && !i.width);
+  (i.kind === 'image' && (!i.hasPoster || !i.width));
 
 /**
  * 挂载模式服务端不读文件内容，所以既没封面也没时长。
@@ -28,7 +28,7 @@ export async function backfillPosters(bundleId, items, { concurrency = 2, onItem
       try {
         const meta =
           item.kind === 'image'
-            ? await probeImageSrc(item.streamUrl)
+            ? await probeImageSrc(item.streamUrl, undefined, { poster: !item.hasPoster })
             : item.kind === 'audio'
               ? { duration: await probeAudioDuration(item.streamUrl) }
               : await probeVideoSrc(item.streamUrl);

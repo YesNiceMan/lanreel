@@ -53,37 +53,6 @@
           </div>
 
           <div class="intake__grid">
-            <div class="mode" data-mount="dropzone">
-              <div class="mode__head">
-                <span class="mode__icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                    <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
-                    <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
-                  </svg>
-                </span>
-                <h3>上传入库</h3>
-                <span class="tip tip--right">
-                  <button class="tip__btn" type="button" aria-label="关于上传入库" aria-describedby="tip-upload">?</button>
-                  <span class="tip__bubble" id="tip-upload" role="tooltip">
-                    浏览器拿不到文件的绝对路径，所以上传必然复制一份到 data/。同一份内容重复入库会按 sha256 去重，只存一次。素材本来就放在这台机器上的话，用右边「挂载」更省磁盘。
-                  </span>
-                </span>
-              </div>
-              <div class="cluster cluster-tight">
-                <button class="btn btn--primary" data-action="pick-folder" type="button">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-                    <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2c.7 0 1.35.36 1.73.94l.87 1.31h6.2A2.5 2.5 0 0 1 20 9.75v7A2.5 2.5 0 0 1 17.5 19h-12A2.5 2.5 0 0 1 3 16.75z" />
-                  </svg>
-                  选择文件夹
-                </button>
-                <button class="btn btn--quiet" data-action="pick-files" type="button">只挑几个文件</button>
-              </div>
-              <p class="mode__note">也可以把整个文件夹拖到这里</p>
-              <input type="file" data-ref="folder-input" data-file-input webkitdirectory directory multiple />
-              <input type="file" data-ref="file-input" data-file-input multiple />
-              <input type="file" data-ref="append-input" data-file-input multiple />
-            </div>
-
             <div class="mode">
               <div class="mode__head">
                 <span class="mode__icon" aria-hidden="true">
@@ -114,6 +83,36 @@
                 <button class="btn btn--quiet" data-action="mount" type="button">挂载</button>
               </div>
               <p class="mode__note">「浏览…」直接弹出系统文件夹选择器，不用手打路径</p>
+            </div>
+            <div class="mode" data-mount="dropzone">
+              <div class="mode__head">
+                <span class="mode__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                    <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
+                    <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+                  </svg>
+                </span>
+                <h3>上传入库</h3>
+                <span class="tip tip--right">
+                  <button class="tip__btn" type="button" aria-label="关于上传入库" aria-describedby="tip-upload">?</button>
+                  <span class="tip__bubble" id="tip-upload" role="tooltip">
+                    浏览器拿不到文件的绝对路径，所以上传必然复制一份到 data/。同一份内容重复入库会按 sha256 去重，只存一次。素材本来就放在这台机器上的话，用右边「挂载」更省磁盘。
+                  </span>
+                </span>
+              </div>
+              <div class="cluster cluster-tight">
+                <button class="btn btn--primary" data-action="pick-folder" type="button">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                    <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.2c.7 0 1.35.36 1.73.94l.87 1.31h6.2A2.5 2.5 0 0 1 20 9.75v7A2.5 2.5 0 0 1 17.5 19h-12A2.5 2.5 0 0 1 3 16.75z" />
+                  </svg>
+                  选择文件夹
+                </button>
+                <button class="btn btn--quiet" data-action="pick-files" type="button">只挑几个文件</button>
+              </div>
+              <p class="mode__note">也可以把整个文件夹拖到这里</p>
+              <input type="file" data-ref="folder-input" data-file-input webkitdirectory directory multiple />
+              <input type="file" data-ref="file-input" data-file-input multiple />
+              <input type="file" data-ref="append-input" data-file-input multiple />
             </div>
           </div>
 

@@ -27,11 +27,25 @@ function reindex() {
 }
 
 /** 备注时间点：秒，保留一位小数；没有就返回 null（注意 Number(null) === 0） */
-function clampSeconds(value) {
+function clampSeconds(value, digits = 1) {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) return null;
-  return Math.round(Math.min(n, 86400) * 10) / 10;
+  const f = 10 ** digits;
+  return Math.round(Math.min(n, 86400) * f) / f;
+}
+
+function normalizeMarks(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((m) => m && clampSeconds(m.t, 3) !== null)
+    .map((m) => ({
+      id: typeof m.id === 'string' && m.id ? m.id : id(8),
+      t: clampSeconds(m.t, 3),
+      author: sanitizeSegment(m.author ?? '匿名', '匿名').slice(0, 40),
+      createdAt: Number(m.createdAt) || Date.now(),
+    }))
+    .sort((a, b) => a.t - b.t);
 }
 
 function normalizeItem(raw, bundle) {
@@ -68,6 +82,7 @@ function normalizeItem(raw, bundle) {
             t: clampSeconds(n.t),
           }))
       : [],
+    marks: normalizeMarks(raw?.marks),
     pending: Boolean(raw?.pending),
     createdAt: Number(raw?.createdAt) || Date.now(),
     updatedAt: Number(raw?.updatedAt) || Date.now(),
@@ -91,6 +106,19 @@ function normalizeBundle(raw) {
   };
   bundle.items = (Array.isArray(raw?.items) ? raw.items : []).map((item) => normalizeItem(item, bundle));
   return bundle;
+}
+
+/**
+ * 评审写操作的归属校验。
+ * strict = 从分享链接进来的同事：必须报上自己的名字，且只能动这个名字名下的内容，
+ * 缺 `by` 一律当作越权（以前是「不传就放行」，任何人删别人备注都不用付出代价）。
+ * 机主（本机或口令）保持豁免，负责收尾清理。
+ */
+function assertMine(author, by, strict, verb, errStatus = 403) {
+  const who = String(author ?? '');
+  const me = String(by ?? '');
+  if (strict && (!me || who !== me)) throw Object.assign(new Error(`只能${verb}自己的内容`), { status: errStatus });
+  if (!strict && me && who && who !== me) throw Object.assign(new Error(`只能${verb}自己的内容`), { status: errStatus });
 }
 
 function normalizeLog(raw) {
@@ -151,8 +179,12 @@ function touch(bundle) {
   persist();
 }
 
+/**
+ * 实时事件里不带 token：拿着它就等于拿着分享链接，能直接读走整个夹子。
+ * 订阅方要么是本机/口令（机主），要么本来就知道自己那条分享码（见 routes.js 的 /api/events）。
+ */
 function emit(type, bundle, extra = {}) {
-  events.emit('change', { type, bundleId: bundle?.id ?? null, token: bundle?.token ?? null, at: Date.now(), ...extra });
+  events.emit('change', { type, bundleId: bundle?.id ?? null, at: Date.now(), ...extra });
 }
 
 /**
@@ -371,7 +403,17 @@ export function bundleStats(bundle) {
   };
 }
 
-export function serializeItem(item) {
+/**
+ * 素材的可读地址。
+ * 访客拿到的每一条都带 `?t=<分享码>`：`<img>` / `<video>` 这类子资源请求带不上自定义头，
+ * 只能靠 URL 把「我是从哪条链接进来的」传给服务端做作用域校验（见 routes.js 的 requireMediaAccess）。
+ */
+function scoped(url, scope) {
+  if (!scope) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}t=${encodeURIComponent(scope)}`;
+}
+
+export function serializeItem(item, { scope = '' } = {}) {
   return {
     id: item.id,
     name: item.name,
@@ -389,14 +431,15 @@ export function serializeItem(item) {
     statusBy: item.statusBy,
     statusAt: item.statusAt,
     notes: item.notes,
+    marks: item.marks ?? [],
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
-    streamUrl: `/api/stream/${item.id}`,
-    posterUrl: item.hasPoster ? `/api/poster/${item.id}` : null,
+    streamUrl: scoped(`/api/stream/${item.id}`, scope),
+    posterUrl: item.hasPoster ? scoped(`/api/poster/${item.id}`, scope) : null,
   };
 }
 
-export function serializeBundle(bundle, { withItems = true, withRoot = false, withLog = false } = {}) {
+export function serializeBundle(bundle, { withItems = true, withRoot = false, withLog = false, scope = '' } = {}) {
   const payload = {
     id: bundle.id,
     token: bundle.token,
@@ -410,7 +453,7 @@ export function serializeBundle(bundle, { withItems = true, withRoot = false, wi
     shareUrl: `/s/${bundle.token}`,
     stats: bundleStats(bundle),
   };
-  if (withItems) payload.items = bundle.items.filter((i) => !i.pending).map(serializeItem);
+  if (withItems) payload.items = bundle.items.filter((i) => !i.pending).map((item) => serializeItem(item, { scope }));
   if (withLog) payload.log = bundle.log ?? [];
   // 绝对路径只回给本机的素材库接口；分享视图里不含（见 routes.js）
   if (withRoot && bundle.mode === 'reference') payload.root = bundle.root;
@@ -757,16 +800,12 @@ export function addNote(itemId, { text, author, t }) {
   return note;
 }
 
-export function removeNote(itemId, noteId, by) {
+export function removeNote(itemId, noteId, by, strict = false) {
   const found = resolveItem(itemId);
   if (!found) return null;
   const note = found.item.notes.find((n) => n.id === noteId);
   if (!note) return null;
-  if (by && note.author !== by) {
-    const err = new Error('只能删除自己的备注');
-    err.status = 403;
-    throw err;
-  }
+  assertMine(note.author, by, strict, '删除');
   found.item.notes = found.item.notes.filter((n) => n.id !== noteId);
   found.item.updatedAt = Date.now();
   found.bundle.updatedAt = found.item.updatedAt;
@@ -774,6 +813,67 @@ export function removeNote(itemId, noteId, by) {
   persist();
   emit('bundle:items', found.bundle, { itemId, action: 'note-remove' });
   return note;
+}
+
+/** 打点：时间轴上的独立标记，只有时间点没有正文 */
+const markError = (status, message) => Object.assign(new Error(message), { status });
+
+function touchMark(found) {
+  found.item.updatedAt = Date.now();
+  found.bundle.updatedAt = found.item.updatedAt;
+}
+
+export function addMark(itemId, { t, author }) {
+  const found = resolveItem(itemId);
+  if (!found) return null;
+  if (found.item.kind !== 'video' && found.item.kind !== 'audio') {
+    throw markError(400, '只有视频或音频能打时间点标记');
+  }
+  const seconds = clampSeconds(t, 3);
+  if (seconds === null) throw markError(400, '时间点无效');
+  const mark = {
+    id: id(8),
+    t: seconds,
+    author: sanitizeSegment(author, '匿名').slice(0, 40) || '匿名',
+    createdAt: Date.now(),
+  };
+  found.item.marks = normalizeMarks([...(found.item.marks ?? []), mark]);
+  touchMark(found);
+  logAction(found.bundle, { by: mark.author, action: 'mark', item: found.item.name });
+  persist();
+  emit('bundle:items', found.bundle, { itemId, action: 'mark', actor: mark.author });
+  return mark;
+}
+
+export function moveMark(itemId, markId, { t, by }, strict = false) {
+  const found = resolveItem(itemId);
+  if (!found) return null;
+  const mark = (found.item.marks ?? []).find((m) => m.id === markId);
+  if (!mark) return null;
+  assertMine(mark.author, by, strict, '移动');
+  const seconds = clampSeconds(t, 3);
+  if (seconds === null) throw markError(400, '时间点无效');
+  mark.t = seconds;
+  found.item.marks.sort((a, b) => a.t - b.t);
+  touchMark(found);
+  logAction(found.bundle, { by: by ?? mark.author, action: 'mark-move', item: found.item.name });
+  persist();
+  emit('bundle:items', found.bundle, { itemId, action: 'mark-move', actor: by ?? mark.author });
+  return mark;
+}
+
+export function removeMark(itemId, markId, by, strict = false) {
+  const found = resolveItem(itemId);
+  if (!found) return null;
+  const mark = (found.item.marks ?? []).find((m) => m.id === markId);
+  if (!mark) return null;
+  assertMine(mark.author, by, strict, '删除');
+  found.item.marks = found.item.marks.filter((m) => m.id !== markId);
+  touchMark(found);
+  logAction(found.bundle, { by: by ?? mark.author, action: 'mark-remove', item: found.item.name });
+  persist();
+  emit('bundle:items', found.bundle, { itemId, action: 'mark-remove' });
+  return mark;
 }
 
 export async function removeItem(itemId, by = '') {

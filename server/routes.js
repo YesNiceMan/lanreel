@@ -2,6 +2,7 @@ import os from 'node:os';
 import { config } from './config.js';
 import { normalizePicked, pickFolder } from './native.js';
 import {
+  addMark,
   addNote,
   findCopyDuplicates,
   commitItem,
@@ -11,9 +12,11 @@ import {
   getBundleByRef,
   listBundles,
   markMissing,
+  moveMark,
   ownerToken,
   removeBundle,
   removeItem,
+  removeMark,
   removeNote,
   rescanBundle,
   reserveItem,
@@ -82,8 +85,8 @@ export function baseFromRequest(req) {
   return `http://${host}:${port}`;
 }
 
-function bundlePayload(bundle, req, { withRoot = false } = {}) {
-  const payload = serializeBundle(bundle, { withRoot });
+function bundlePayload(bundle, req, { withRoot = false, scope = '' } = {}) {
+  const payload = serializeBundle(bundle, { withRoot, scope });
   payload.baseUrl = baseFromRequest(req);
   payload.shareLink = `${payload.baseUrl}${payload.shareUrl}`;
   return payload;
@@ -105,7 +108,7 @@ const csvCell = (value) => {
 
 /** 一行一条素材，纯表格：表头之外不塞说明行，免得 Excel 里筛选要手动删 */
 function reviewCsv(data) {
-  const head = ['序号', '文件名', '相对路径', '类型', '时长', '体积(字节)', '状态', '标注人', '标注时间', '备注', '源文件'];
+  const head = ['序号', '文件名', '相对路径', '类型', '时长', '体积(字节)', '状态', '标注人', '标注时间', '标记', '备注', '源文件'];
   const rows = data.items.map((item, i) => [
     i + 1,
     item.name,
@@ -116,6 +119,7 @@ function reviewCsv(data) {
     statusLabel(item.status),
     item.statusBy,
     item.statusAt ? new Date(item.statusAt).toLocaleString('zh-CN', { hour12: false }) : '',
+    (item.marks ?? []).map((m) => `[${hhmmss(m.t)}]`).join(' ｜ '),
     item.notes.map((n) => `${n.t != null ? `[${hhmmss(n.t)}] ` : ''}${n.author}：${n.text}`).join(' ｜ '),
     item.missing ? '已丢失' : '',
   ]);
@@ -322,6 +326,20 @@ function requireScopedIds(scope, ids) {
   return ids;
 }
 
+/**
+ * 供片作用域：机主（本机或口令）不限；同事只能读自己那条分享链接里的素材。
+ * `<img>` / `<video>` 带不上自定义头，所以访客的媒体地址由服务端写好 `?t=<分享码>`（见 store.js）。
+ * 少了这一步，任何同网设备拿一个 itemId 就能读走从未分享过的素材。
+ */
+function requireMediaAccess(req, found, query = {}) {
+  if (isOwner(req)) return;
+  const token = String(query.t ?? '').trim() || String(req.headers['x-share-token'] ?? '').trim();
+  const bundle = token ? getBundleByRef(token) : null;
+  if (!bundle || bundle.token !== token) throw HttpError(403, '缺少有效的分享码，请从分享链接打开');
+  if (!shareActive(bundle)) throw HttpError(410, '分享链接已过期');
+  if (found.bundle.id !== bundle.id) throw HttpError(403, '这条素材不属于当前分享链接');
+}
+
 // ── 机主口令：让机主在局域网里的其他设备上也能管理素材库 ──────────────────
 // 口令是首启随机生成的 12 位（或 OWNER_TOKEN 指定），等价于「我是这台机器的管理员」
 on('POST', '/api/owner/unlock', async ({ res, req }) => {
@@ -408,10 +426,40 @@ on('POST', '/api/items/:id/notes', async ({ res, req, params }) => {
 });
 
 on('DELETE', '/api/items/:id/notes/:noteId', ({ res, req, params, query }) => {
-  requireScopedItem(reviewScope(req), params.id);
+  const scope = reviewScope(req);
+  requireScopedItem(scope, params.id);
   const by = query.by ? sanitizeSegment(query.by, '') : '';
-  const note = removeNote(params.id, params.noteId, by);
+  const note = removeNote(params.id, params.noteId, by, Boolean(scope));
   if (!note) throw HttpError(404, '备注不存在');
+  sendJson(res, 200, { removed: true });
+});
+
+// 打点：时间轴上的独立时间点，评审时先落点，备注随后跟
+on('POST', '/api/items/:id/marks', async ({ res, req, params }) => {
+  const scope = reviewScope(req);
+  requireScopedItem(scope, params.id);
+  const body = await readJson(req);
+  const mark = addMark(params.id, { t: body.t, author: body.author });
+  if (!mark) throw HttpError(404, '素材不存在');
+  sendJson(res, 201, mark);
+});
+
+on('PATCH', '/api/items/:id/marks/:markId', async ({ res, req, params }) => {
+  const scope = reviewScope(req);
+  requireScopedItem(scope, params.id);
+  const body = await readJson(req);
+  const by = body.by ? sanitizeSegment(body.by, '') : '';
+  const mark = moveMark(params.id, params.markId, { t: body.t, by }, Boolean(scope));
+  if (!mark) throw HttpError(404, '标记不存在');
+  sendJson(res, 200, mark);
+});
+
+on('DELETE', '/api/items/:id/marks/:markId', ({ res, req, params, query }) => {
+  const scope = reviewScope(req);
+  requireScopedItem(scope, params.id);
+  const by = query.by ? sanitizeSegment(query.by, '') : '';
+  const mark = removeMark(params.id, params.markId, by, Boolean(scope));
+  if (!mark) throw HttpError(404, '标记不存在');
   sendJson(res, 200, { removed: true });
 });
 
@@ -420,13 +468,15 @@ on('GET', '/api/share/:token', ({ res, req, params }) => {
   const bundle = getBundleByRef(params.token);
   if (!bundle) throw HttpError(404, '分享链接不存在或已删除');
   if (!shareActive(bundle)) throw HttpError(410, '分享链接已过期');
-  sendJson(res, 200, bundlePayload(bundle, req));
+  // 访客的媒体地址统一带上这条链接的分享码，供 requireMediaAccess 校验
+  sendJson(res, 200, bundlePayload(bundle, req, { scope: bundle.token }));
 });
 
 // ── 流媒体：Range 支持 = 秒开 + 任意拖拽 ─────────────────────────────────
 on('GET', '/api/stream/:id', async ({ res, req, params, query }) => {
   const found = resolveItem(params.id);
   if (!found) throw HttpError(404, '素材不存在');
+  requireMediaAccess(req, found, query);
   await sendFile(req, res, found.file, {
     contentType: found.item.mime || mimeOf(found.item.ext),
     disposition: query.download === '1' ? 'attachment' : 'inline',
@@ -436,9 +486,10 @@ on('GET', '/api/stream/:id', async ({ res, req, params, query }) => {
   });
 });
 
-on('GET', '/api/poster/:id', async ({ res, req, params }) => {
+on('GET', '/api/poster/:id', async ({ res, req, params, query }) => {
   const found = resolveItem(params.id);
   if (!found) throw HttpError(404, '素材不存在');
+  requireMediaAccess(req, found, query);
   if (found.item.kind === 'image') {
     await sendFile(req, res, found.file, {
       contentType: found.item.mime,
@@ -456,15 +507,24 @@ on('GET', '/api/poster/:id', async ({ res, req, params }) => {
   });
 });
 
-on('GET', '/api/events', ({ res, query }) => {
-  let bundleId = null;
-  const ref = query.bundle || query.token;
-  if (ref) {
-    const bundle = getBundleByRef(ref);
-    if (!bundle) throw HttpError(404, '素材夹不存在');
-    bundleId = bundle.id;
+/**
+ * 实时同步。以前不带参数的订阅谁都能连，而广播里又带着分享码 —— 等于把
+ * 从未分享过的素材夹白送给同网任何一台设备。现在同事必须用自己那条分享码订阅，
+ * 而且只回放那个夹子；只有本机/口令（机主）能听全站。
+ */
+on('GET', '/api/events', ({ res, req, query }) => {
+  const ref = String(query.bundle || query.token || '').trim();
+  if (isOwner(req)) {
+    const bundle = ref ? getBundleByRef(ref) : null;
+    if (ref && !bundle) throw HttpError(404, '素材夹不存在');
+    addClient(res, { bundleId: bundle?.id ?? null });
+    return;
   }
-  addClient(res, { bundleId });
+  if (!ref) throw HttpError(403, '请从分享链接打开后再订阅实时同步');
+  const bundle = getBundleByRef(ref);
+  if (!bundle || bundle.token !== ref) throw HttpError(403, '分享码无效，请让同事重新发一条链接');
+  if (!shareActive(bundle)) throw HttpError(410, '分享链接已过期');
+  addClient(res, { bundleId: bundle.id });
 });
 
 function matchRoute(method, pathname) {

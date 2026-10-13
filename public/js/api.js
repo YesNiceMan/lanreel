@@ -57,6 +57,13 @@ export const api = {
       method: 'DELETE',
     }),
 
+  addMark: (itemId, t, author) => post(`/api/items/${encodeURIComponent(itemId)}/marks`, { t, author }),
+  moveMark: (itemId, markId, t, by) => patch(`/api/items/${encodeURIComponent(itemId)}/marks/${encodeURIComponent(markId)}`, { t, by }),
+  deleteMark: (itemId, markId, by) =>
+    request(`/api/items/${encodeURIComponent(itemId)}/marks/${encodeURIComponent(markId)}?by=${encodeURIComponent(by)}`, {
+      method: 'DELETE',
+    }),
+
   /** 原样 PUT 文件字节：没有 multipart，没有云端中转。xhr 用来拿上传进度。 */
   uploadFile(bundleRef, file, { relPath, duration = 0, width = 0, height = 0, onProgress, signal } = {}) {
     const params = new URLSearchParams({

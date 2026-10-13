@@ -18,15 +18,16 @@ function makeVideo(src, objectUrl) {
   return { video, release: () => { video.removeAttribute('src'); video.load(); if (objectUrl) URL.revokeObjectURL(objectUrl); } };
 }
 
-function snapshot(video) {
+/** 把已经解码好的画面缩到 640px 宽存成 jpeg，作为网格里的缩略图 */
+function snapshot(source, srcW, srcH) {
   const canvas = document.createElement('canvas');
-  const ratio = video.videoHeight / (video.videoWidth || 1) || 0.5625;
-  canvas.width = Math.min(640, video.videoWidth || 640);
+  const ratio = srcH / (srcW || 1) || 0.5625;
+  canvas.width = Math.min(640, srcW || 640);
   canvas.height = Math.round(canvas.width * ratio);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#05070d';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.72));
 }
 
@@ -50,7 +51,7 @@ export async function probeVideoSrc(src, objectUrl) {
           const seekTo = Math.min(1.2, base.duration * 0.15);
           const onSeeked = () => {
             video.removeEventListener('error', fail);
-            snapshot(video)
+            snapshot(video, video.videoWidth, video.videoHeight)
               .then((poster) => resolve({ ...base, poster }))
               .catch(() => resolve(base));
           };
@@ -99,16 +100,30 @@ export async function inspectAudio(file) {
   }
 }
 
-export async function probeImageSrc(src, objectUrl) {
+/**
+ * 图片：量尺寸，并顺手压一张缩略图。
+ * 原图可能是几 MB 的海报或截帧，网格不能直接拿它当封面用。
+ */
+export async function probeImageSrc(src, objectUrl, { poster = true } = {}) {
   const img = new Image();
   try {
     return await withTimeout(
       new Promise((resolve) => {
-        img.onload = () => resolve({
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-          failed: !img.naturalWidth,
-        });
+        img.onload = async () => {
+          const base = {
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+            failed: !img.naturalWidth,
+          };
+          if (!base.failed && poster) {
+            try {
+              return resolve({ ...base, poster: await snapshot(img, img.naturalWidth, img.naturalHeight) });
+            } catch {
+              /* 压不出封面就只回尺寸 */
+            }
+          }
+          resolve(base);
+        };
         img.onerror = () => resolve({ failed: true });
         img.src = src;
       }),
