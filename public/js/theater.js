@@ -1101,6 +1101,12 @@ export function openTheater({ items, index = 0, actor, onChange, onClose }) {
     onClose,
   });
 
+  // 弹层要把键盘拿走：不夺焦点的话焦点还留在背景那张卡片上，
+  // 按一次空格 = 卡片的 Enter/Space 处理 = 再多开一间放映厅
+  const opener = document.activeElement;
+  shell.tabIndex = -1;
+  shell.focus({ preventScroll: true });
+
   const onKey = (e) => {
     if (e.target instanceof HTMLElement && /input|textarea/i.test(e.target.tagName)) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1163,6 +1169,8 @@ export function openTheater({ items, index = 0, actor, onChange, onClose }) {
     transport = null;
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
     origClose();
+    // 焦点还给打开它的那张卡片，关掉后继续用键盘顺下去看
+    if (opener?.isConnected && typeof opener.focus === 'function') opener.focus({ preventScroll: true });
   };
 
   render();

@@ -11,7 +11,7 @@ function positiveInt(value, fallback) {
 
 export const config = {
   appName: 'LanReel 局域网素材放映厅',
-  version: '1.10.3',
+  version: '1.10.4',
   root,
   publicDir: path.join(root, 'public'),
   dataDir: process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(root, 'data'),

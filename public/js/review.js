@@ -312,6 +312,9 @@ export function createReview({ host, barHost, dockHost, actor, emptyText = '还�
   }
 
   function openAt(itemId) {
+    // 已经有一间放映厅开着就不要再开第二间：背景里那张卡片的 keydown 还会收到 Enter/Space，
+    // 不拦的话按一次空格多叠一间，几间同时放
+    if (theater) return;
     const visible = filtered();
     const index = Math.max(0, visible.findIndex((i) => i.id === itemId));
     theater = openTheater({

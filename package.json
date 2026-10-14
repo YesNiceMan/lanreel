@@ -1,6 +1,6 @@
 {
   "name": "lanreel",
-  "version": "1.10.3",
+  "version": "1.10.4",
   "description": "局域网素材放映厅 — 本地文件夹直接入库，同网链接即时浏览、勾选评审、批注备注，无需上传云端。",
   "type": "module",
   "engines": {
