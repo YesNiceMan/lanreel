@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>评审档案 · LanReel</title>
+    <meta name="description" content="评审记录档案：素材夹撤下之后，谁在什么时候说过什么仍然查得到。" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/tokens.css" />
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/views.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+            <path d="M9 6.5v11l8.5-5.5z" />
+          </svg>
+        </span>
+        <span>LanReel<span class="accent-text">.</span></span>
+      </a>
+      <span class="pill" data-mount="scope">评审档案 · 仅机主可见</span>
+      <span class="grow"></span>
+      <a class="btn btn--sm" href="/">回素材库</a>
+      <button class="btn btn--icon btn--ghost" data-action="theme" type="button" aria-label="切换明暗主题"></button>
+    </header>
+
+    <main class="shell">
+      <section class="section arch__head">
+        <div class="col">
+          <p class="eyebrow">ARCHIVE · 只追加，不删除</p>
+          <h2 class="panel-title">谁在什么时候，对哪条素材说了什么</h2>
+          <p class="muted" data-mount="lede">
+            素材夹可以撤下、源文件可以移走，这份记录留在 data/archive/ 里。
+          </p>
+        </div>
+        <div class="cluster cluster-tight" data-mount="footprint"></div>
+      </section>
+
+      <section class="section">
+        <div class="toolbar" data-mount="toolbar">
+          <label class="search">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" />
+            </svg>
+            <input class="input" data-ref="q" type="search" placeholder="搜备注原文、素材名、署名…" aria-label="搜索档案" />
+          </label>
+          <select class="input" data-ref="who" aria-label="按人筛选"></select>
+          <select class="input" data-ref="op" aria-label="按操作筛选"></select>
+          <button class="filter" data-action="only-archived" aria-pressed="false" type="button">只看已撤下</button>
+          <span class="tip tip--bottom right">
+            <button class="tip__btn" type="button" aria-label="关于档案筛选" aria-describedby="tip-arch">?</button>
+            <span class="tip__bubble" id="tip-arch" role="tooltip">
+              「服务端验证过」指这个名字是服务端盖章的身份（机主 / 邀请成员）；从分享链接进来的同事，名字是自己填的，记录里如实标为未验证。升级前旧库里的记录标为「旧库」。
+            </span>
+          </span>
+          <span class="grow"></span>
+        </div>
+
+        <div class="arch">
+          <div class="arch__list" data-mount="list"></div>
+          <div class="arch__detail" data-mount="detail"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot shell">
+      <span data-mount="storage">档案目录 data/archive/</span>
+      <span class="cluster cluster-tight">
+        <span data-mount="version">LanReel</span>
+      </span>
+    </footer>
+
+    <script type="module" src="/js/archive-view.js"></script>
+  </body>
+</html>

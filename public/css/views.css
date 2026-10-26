@@ -586,3 +586,140 @@ input[type='file'][data-file-input] {
 .stagger > *:nth-child(7) { animation-delay: calc(var(--stagger) * 6); }
 .stagger > *:nth-child(8) { animation-delay: calc(var(--stagger) * 7); }
 .stagger > *:nth-child(n + 9) { animation-delay: calc(var(--stagger) * 8); }
+
+/* ── 评审档案（/archive）────────────────────────────────────────────────── */
+.arch__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.arch {
+  display: grid;
+  grid-template-columns: minmax(0, 21rem) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (max-width: 52rem) {
+  .arch { grid-template-columns: minmax(0, 1fr); }
+}
+
+.toolbar select.input {
+  width: auto;
+  flex: 0 1 auto;
+  min-width: 8.5rem;
+  max-width: 12rem;
+}
+
+.arch__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: min(72vh, 44rem);
+  overflow: auto;
+}
+
+.arch-card {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  padding: var(--space-4);
+  gap: var(--space-2);
+  font: inherit;
+  color: inherit;
+}
+
+.arch-card__title {
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+.arch-detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.arch-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.arch-row {
+  display: grid;
+  grid-template-columns: 5.5rem 1.75rem minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.arch-row__time {
+  font-size: var(--text-2xs);
+  padding-top: var(--space-1);
+}
+
+.arch-row__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  color: var(--ink-60);
+}
+
+.arch-row[data-tone='review'] .arch-row__mark { background: var(--accent-soft); color: var(--accent); }
+
+.arch-row__who { font-size: var(--text-sm); }
+
+.arch-row__unverified { color: var(--tone-warn); }
+
+.arch-row__item {
+  font-size: var(--text-xs);
+  color: var(--ink-60);
+  max-width: 22ch;
+}
+
+.arch-row__text {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.arch-row__thumb {
+  width: 3.5rem;
+  height: 2rem;
+  object-fit: cover;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--line-soft);
+  background: var(--surface-2);
+}
+
+/* ── 远程挂载的目录浏览器 ──────────────────────────────────────────────── */
+.browse__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.browse__row:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}

@@ -2,8 +2,18 @@ import { EventEmitter } from 'node:events';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
-import { extOf, id, kindOf, mimeOf, sanitizeRelPath, sanitizeSegment, walkMedia } from './util.js';
+import { extOf, id, kindOf, mimeOf, sanitizeRelPath, sanitizeSegment, safeEqual, walkMedia } from './util.js';
 import { STATUS_KEYS } from '../public/js/statuses.js';
+import {
+  actor as archiveActor,
+  append as archiveAppend,
+  bundleSnapshot,
+  findPriorByRoot,
+  hasRecords,
+  movePosters,
+  removeArchive,
+  snapshot as itemSnapshot,
+} from './archive.js';
 
 export const events = new EventEmitter();
 
@@ -60,6 +70,8 @@ function normalizeItem(raw, bundle) {
     kind: raw?.kind && raw.kind !== 'other' ? raw.kind : kindOf(name),
     mime: raw?.mime || mimeOf(ext),
     size: Number(raw?.size) || 0,
+    // 源文件的修改时间：挂载素材没有内容哈希，重挂认领旧档案只能靠 相对路径+体积+这个
+    mtimeMs: Number(raw?.mtimeMs) || 0,
     duration: Number(raw?.duration) || 0,
     width: Number(raw?.width) || 0,
     height: Number(raw?.height) || 0,
@@ -99,6 +111,8 @@ function normalizeBundle(raw) {
     expiresAt: Number(raw?.expiresAt) || 0,
     mode: raw?.mode === 'reference' ? 'reference' : 'copy',
     root: typeof raw?.root === 'string' ? raw.root : '',
+    // 归属：'machine' = 机主本机建的夹子。P2 的邀请制成员会填自己的 id，这里先把字段落进 schema。
+    ownerId: typeof raw?.ownerId === 'string' && raw.ownerId ? raw.ownerId : 'machine',
     createdAt: Number(raw?.createdAt) || Date.now(),
     updatedAt: Number(raw?.updatedAt) || Date.now(),
     log: normalizeLog(raw?.log),
@@ -140,6 +154,20 @@ function normalizeLog(raw) {
 function logAction(bundle, entry) {
   if (!bundle) return;
   bundle.log = normalizeLog([...(bundle.log ?? []), { t: Date.now(), ...entry }]);
+}
+
+/**
+ * 留痕：往档案里追加一条。kind 一律由路由盖章（owner / member / guest），
+ * 默认 guest —— 忘记传参数时最多少一份可信度，不会把自报的名字洗成验证过的。
+ */
+function archive(bundle, op, { by = '', kind = 'guest', item = null, data = {} } = {}) {
+  if (!bundle) return;
+  archiveAppend(bundle.id, {
+    op,
+    actor: archiveActor(by, kind),
+    item: itemSnapshot(item),
+    data,
+  });
 }
 
 let writeChain = Promise.resolve();
@@ -201,6 +229,151 @@ function ensureOwnerToken() {
   return true;
 }
 
+/** 这些流水已经被 note/mark/status 记录覆盖了，回灌时不再重复写一遍 */
+const REVIEW_LOG_ACTIONS = new Set(['note', 'note-remove', 'mark', 'mark-move', 'mark-remove', 'status']);
+
+/** 旧库里的评审数据摊平成时间线；署名一律标 legacy，因为当年服务端没验证过名字 */
+function legacyRecords(bundle) {
+  const who = (name) => ({ name: String(name || '匿名').slice(0, 40), kind: 'legacy', verified: false });
+  const out = [
+    {
+      op: bundle.mode === 'reference' ? 'bundle:mount' : 'bundle:create',
+      at: bundle.createdAt,
+      actor: who('机主'),
+      item: null,
+      data: { snapshot: bundleSnapshot(bundle), count: bundle.items.length, legacy: true },
+    },
+  ];
+  for (const item of bundle.items) {
+    if (item.status !== 'unset') {
+      out.push({
+        op: 'status',
+        at: item.statusAt || item.updatedAt,
+        actor: who(item.statusBy),
+        item: itemSnapshot(item),
+        data: { status: item.status, legacy: true },
+      });
+    }
+    for (const note of item.notes) {
+      out.push({
+        op: 'note',
+        at: note.createdAt,
+        actor: who(note.author),
+        item: itemSnapshot(item),
+        data: { text: note.text, t: note.t, noteId: note.id, legacy: true },
+      });
+    }
+    for (const mark of item.marks ?? []) {
+      out.push({
+        op: 'mark',
+        at: mark.createdAt,
+        actor: who(mark.author),
+        item: itemSnapshot(item),
+        data: { t: mark.t, markId: mark.id, legacy: true },
+      });
+    }
+  }
+  for (const entry of bundle.log ?? []) {
+    if (REVIEW_LOG_ACTIONS.has(entry.action)) continue;
+    out.push({
+      op: 'legacy:log',
+      at: entry.t,
+      actor: who(entry.by),
+      item: null,
+      data: { action: entry.action, item: entry.item, status: entry.status, count: entry.count, legacy: true },
+    });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * 升级前的记录只活在 db.json 的夹子内部，删了就没了。首次启动把它们回灌成档案。
+ * 已经有档案的夹子跳过，所以重启或回滚后再升级都不会写重。
+ */
+async function backfillArchives() {
+  let bundles = 0;
+  let records = 0;
+  for (const bundle of db.bundles) {
+    if (await hasRecords(bundle.id)) continue;
+    const recs = legacyRecords(bundle);
+    await Promise.all(recs.map((rec) => archiveAppend(bundle.id, rec)));
+    bundles += 1;
+    records += recs.length;
+  }
+  return { bundles, records };
+}
+
+/**
+ * 成员不是账号体系：没有密码、没有注册页。机主发一条 /j/<邀请码> 链接，
+ * 对方点开换一枚 HttpOnly Cookie，就能建自己的夹子、上传、分享、看自己的档案。
+ * 换来的关键好处是留痕里的名字由服务端盖章（verified=true），不再是浏览器自报。
+ */
+function normalizeMember(raw) {
+  return {
+    id: typeof raw?.id === 'string' && raw.id ? raw.id : id(8),
+    token: typeof raw?.token === 'string' && raw.token ? raw.token : id(12),
+    name: typeof raw?.name === 'string' ? sanitizeSegment(raw.name, '').slice(0, 40) : '',
+    createdAt: Number(raw?.createdAt) || Date.now(),
+    revoked: Boolean(raw?.revoked),
+    createdBy: typeof raw?.createdBy === 'string' ? raw.createdBy.slice(0, 40) : '机主',
+  };
+}
+
+/** 对外暴露的成员视图：不含 token，邀请码只在生成那一刻回给机主一次 */
+export function members() {
+  return (db.meta.members ?? []).map((m) => ({
+    id: m.id,
+    name: m.name,
+    createdAt: m.createdAt,
+    revoked: m.revoked,
+    createdBy: m.createdBy,
+    bundles: db.bundles.filter((b) => b.ownerId === m.id).length,
+  }));
+}
+
+export function createMember({ name = '', by = '机主' } = {}) {
+  const member = normalizeMember({ name, createdBy: by });
+  db.meta.members = [...(db.meta.members ?? []), member];
+  persist();
+  return member;
+}
+
+export function memberByToken(token) {
+  const given = String(token ?? '');
+  if (!given) return null;
+  return (db.meta.members ?? []).find((m) => !m.revoked && m.token && safeEqual(m.token, given)) ?? null;
+}
+
+export function memberById(ref) {
+  return (db.meta.members ?? []).find((m) => m.id === ref) ?? null;
+}
+
+/** 邀请时没写名字，才由对方在加入那一步填一次；填过就固定，省得同一个人两个署名 */
+export function nameMember(ref, name) {
+  const member = memberById(ref);
+  if (!member) return null;
+  if (!member.name) member.name = sanitizeSegment(name, '').slice(0, 40);
+  persist();
+  return member;
+}
+
+/** 停用只作废凭证：他名下的夹子与已留下的记录都还在，由机主收尾 */
+export function revokeMember(ref) {
+  const member = memberById(ref);
+  if (!member || member.revoked) return member;
+  member.revoked = true;
+  persist();
+  return member;
+}
+
+export function restoreMember(ref) {
+  const member = memberById(ref);
+  if (!member || !member.revoked) return member;
+  member.revoked = false;
+  persist();
+  return member;
+}
+
 export async function init() {
   try {
     const raw = await fsp.readFile(config.dbFile, 'utf8');
@@ -212,6 +385,7 @@ export async function init() {
   }
   db.bundles = (db.bundles ?? []).map(normalizeBundle);
   db.meta = { ...(db.meta ?? {}) };
+  db.meta.members = (db.meta.members ?? []).map(normalizeMember);
   const freshToken = ensureOwnerToken();
   // 清理上次进程崩溃留下的未完成上传
   let pruned = 0;
@@ -232,11 +406,12 @@ export async function init() {
   }
   reindex();
   if (pruned || freshToken) persist();
+  const archived = await backfillArchives();
   const lost = await verifyReferences();
   const freed = await sweepOrphanBlobs();
   await flush();
   await writeChain;
-  return { pruned, freed, missing: lost.missing };
+  return { pruned, freed, archived, missing: lost.missing };
 }
 
 /**
@@ -449,6 +624,7 @@ export function serializeBundle(bundle, { withItems = true, withRoot = false, wi
     updatedAt: bundle.updatedAt,
     expiresAt: bundle.expiresAt,
     mode: bundle.mode,
+    ownerId: bundle.ownerId,
     shareable: shareActive(bundle),
     shareUrl: `/s/${bundle.token}`,
     stats: bundleStats(bundle),
@@ -460,22 +636,25 @@ export function serializeBundle(bundle, { withItems = true, withRoot = false, wi
   return payload;
 }
 
-export function listBundles({ withRoot = false } = {}) {
-  return db.bundles.map((bundle) => serializeBundle(bundle, { withItems: false, withRoot }));
+export function listBundles({ withRoot = false, ownerId = null } = {}) {
+  const list = ownerId ? db.bundles.filter((b) => b.ownerId === ownerId) : db.bundles;
+  return list.map((bundle) => serializeBundle(bundle, { withItems: false, withRoot }));
 }
 
-export function createBundle({ name, description = '' }) {
+export function createBundle({ name, description = '', by = '机主', kind = 'owner', ownerId = 'machine' }) {
   const bundle = normalizeBundle({
     id: id(10),
     name: sanitizeSegment(name, '未命名素材夹'),
     description: String(description ?? '').slice(0, 600),
     expiresAt: config.shareTtlDays ? Date.now() + config.shareTtlDays * 86400000 : 0,
+    ownerId,
     items: [],
   });
   db.bundles.unshift(bundle);
   bundleIndex.set(bundle.id, bundle);
-  logAction(bundle, { by: '机主', action: 'create' });
+  logAction(bundle, { by, action: 'create' });
   touch(bundle);
+  archive(bundle, 'bundle:create', { by, kind, data: { snapshot: bundleSnapshot(bundle) } });
   emit('bundle:created', bundle);
   return bundle;
 }
@@ -484,7 +663,7 @@ export function createBundle({ name, description = '' }) {
  * 零拷贝挂载：素材留在原始目录，库里只记路径与元数据。
  * 删除素材夹只会解除分享，绝不动用户原始文件。
  */
-export async function createReferenceBundle(rootPath, name) {
+export async function createReferenceBundle(rootPath, name, { by = '机主', kind = 'owner', ownerId = 'machine', prior = null } = {}) {
   const root = path.resolve(String(rootPath ?? ''));
   let stat;
   try {
@@ -510,20 +689,34 @@ export async function createReferenceBundle(rootPath, name) {
     name: sanitizeSegment(name || path.basename(root), '挂载目录'),
     mode: 'reference',
     root,
+    ownerId,
     expiresAt: config.shareTtlDays ? Date.now() + config.shareTtlDays * 86400000 : 0,
     items: files,
   });
   db.bundles.unshift(bundle);
   bundleIndex.set(bundle.id, bundle);
   for (const item of bundle.items) itemIndex.set(item.id, { item, bundle });
-  logAction(bundle, { by: '机主', action: 'mount', count: bundle.items.length });
+  logAction(bundle, { by, action: 'mount', count: bundle.items.length });
   touch(bundle);
+  archive(bundle, 'bundle:mount', {
+    by,
+    kind,
+    data: { snapshot: bundleSnapshot(bundle), count: bundle.items.length },
+  });
+  // 同一个源目录挂过又撤了，现在挂回来：记下上一次，档案视图把两段接成一条历史
+  if (prior) {
+    archive(bundle, 'bundle:reopen', {
+      by,
+      kind,
+      data: { previousBundleId: prior.bundleId, previousName: prior.name, previousRecords: prior.records },
+    });
+  }
   emit('bundle:created', bundle);
   return bundle;
 }
 
 /** 源目录有新文件就补进来、被删掉的就移出，已有的状态与备注原样保留。 */
-export async function rescanBundle(ref) {
+export async function rescanBundle(ref, { by = '机主', kind = 'owner' } = {}) {
   const bundle = getBundleByRef(ref);
   if (!bundle || bundle.mode !== 'reference') return null;
   const files = await walkMedia(bundle.root, { maxFiles: config.maxFilesPerBundle });
@@ -554,8 +747,9 @@ export async function rescanBundle(ref) {
   }
   bundle.items = [...kept.values()];
   bundle.updatedAt = Date.now();
-  logAction(bundle, { by: '机主', action: 'rescan', count: added + removed + revived });
+  logAction(bundle, { by, action: 'rescan', count: added + removed + revived });
   persist();
+  archive(bundle, 'bundle:rescan', { by, kind, data: { added, removed, revived, total: bundle.items.length } });
   emit('bundle:items', bundle, { action: 'rescan' });
   return { added, removed, revived, total: bundle.items.length };
 }
@@ -594,26 +788,47 @@ export async function storageReport() {
   return { files: acc.files, onDisk: acc.bytes };
 }
 
-export function updateBundle(ref, patch, by = '机主') {
+export function updateBundle(ref, patch, by = '机主', kind = 'owner') {
   const bundle = getBundleByRef(ref);
   if (!bundle) return null;
+  const prevName = bundle.name;
+  const prevExpiry = bundle.expiresAt;
   const renamed = typeof patch.name === 'string' && patch.name.trim() && sanitizeSegment(patch.name, bundle.name) !== bundle.name;
   if (typeof patch.name === 'string') bundle.name = sanitizeSegment(patch.name, bundle.name);
   if (typeof patch.description === 'string') bundle.description = patch.description.slice(0, 600);
   if (patch.expiresAt !== undefined) bundle.expiresAt = Math.max(0, Number(patch.expiresAt) || 0);
   if (renamed) logAction(bundle, { by, action: 'rename', item: bundle.name });
   touch(bundle);
+  if (renamed) archive(bundle, 'bundle:rename', { by, kind, data: { from: prevName, to: bundle.name } });
+  if (bundle.expiresAt !== prevExpiry) {
+    archive(bundle, 'bundle:expire', { by, kind, data: { from: prevExpiry, to: bundle.expiresAt } });
+  }
   emit('bundle:updated', bundle);
   return bundle;
 }
 
-export async function removeBundle(ref) {
+/**
+ * 撤下归档：解除分享、把属于我们的字节从 data/ 里清掉，但评审记录与封面留在 data/archive/。
+ * 顺序是刻意的：先从 db 移除并落盘（提交点），再搬封面，最后才动素材文件——
+ * 后半段即使崩了，历史也已经安全落地。
+ */
+export async function unlistBundle(ref, { by = '机主', kind = 'owner' } = {}) {
   const bundle = getBundleByRef(ref);
-  if (!bundle) return false;
+  if (!bundle) return null;
+  const items = [...bundle.items];
+  const snapshot = bundleSnapshot(bundle);
+  const notes = items.reduce((sum, i) => sum + i.notes.length, 0);
+  const marks = items.reduce((sum, i) => sum + (i.marks ?? []).length, 0);
+
   db.bundles = db.bundles.filter((b) => b.id !== bundle.id);
   bundleIndex.delete(bundle.id);
-  for (const item of bundle.items) {
-    itemIndex.delete(item.id);
+  for (const item of items) itemIndex.delete(item.id);
+  persist();
+  emit('bundle:removed', bundle);
+  await flushAndWait();
+
+  const posters = await movePosters(bundle.id, items, (item) => posterFile(bundle, item));
+  for (const item of items) {
     if (!item.absPath) {
       // 原始文件留在原地；复制入库的先解链接，再判断 blob 是否可回收
       await fsp.rm(itemFile(bundle, item), { force: true });
@@ -622,10 +837,17 @@ export async function removeBundle(ref) {
     await fsp.rm(posterFile(bundle, item), { force: true });
   }
   await fsp.rm(bundleDir(bundle.id), { recursive: true, force: true });
-  persist();
-  emit('bundle:removed', bundle);
-  await flushAndWait();
-  return true;
+
+  archive(bundle, 'unlist', { by, kind, data: { snapshot, notes, marks, posters } });
+  return { id: bundle.id, name: snapshot.name, mode: snapshot.mode, items: items.length, notes, marks, posters };
+}
+
+/** 彻底删除：连档案一起抹掉。机主显式确认才走到这里，没有挽回手段。 */
+export async function purgeBundle(ref, opts = {}) {
+  const result = await unlistBundle(ref, opts);
+  if (!result) return null;
+  await removeArchive(result.id);
+  return { ...result, archived: false };
 }
 
 export function reserveItem(bundle, { name, relPath, mime, size, duration, width, height }) {
@@ -673,6 +895,12 @@ export async function commitItem(item, meta = {}) {
   target.updatedAt = Date.now();
   entry.bundle.updatedAt = target.updatedAt;
   persist();
+  archive(entry.bundle, 'item:add', {
+    by: meta.by ?? '机主',
+    kind: meta.kind ?? 'owner',
+    item: target,
+    data: { mime: target.mime },
+  });
   emit('bundle:items', entry.bundle, { itemId: target.id, action: 'add' });
   return target;
 }
@@ -692,6 +920,7 @@ export function updateItem(itemId, patch = {}) {
   const found = resolveItem(itemId);
   if (!found) return null;
   const { item, bundle } = found;
+  const kind = patch.kind ?? 'owner';
   let entry = null;
   if (patch.status !== undefined) {
     if (!STATUS_KEYS.includes(patch.status)) {
@@ -699,15 +928,19 @@ export function updateItem(itemId, patch = {}) {
       err.status = 400;
       throw err;
     }
+    const prev = item.status;
     item.status = patch.status;
     item.statusBy = typeof patch.by === 'string' ? patch.by.slice(0, 40) : '';
     item.statusAt = item.status === 'unset' ? 0 : Date.now();
     entry = { by: item.statusBy, action: 'status', item: item.name, status: patch.status };
+    archive(bundle, 'status', { by: item.statusBy, kind, item, data: { status: patch.status, from: prev } });
   }
   if (typeof patch.name === 'string' && patch.name.trim()) {
+    const from = item.name;
     item.name = sanitizeSegment(patch.name, item.name);
     item.relPath = sanitizeRelPath(patch.relPath ?? item.name, item.name);
     entry = { by: typeof patch.by === 'string' ? patch.by : '', action: 'rename', item: item.name };
+    archive(bundle, 'item:rename', { by: entry.by, kind, item, data: { from, to: item.name } });
   }
   if (patch.duration) item.duration = Math.round(Number(patch.duration) * 100) / 100;
   if (patch.width) item.width = Number(patch.width) || item.width;
@@ -720,7 +953,7 @@ export function updateItem(itemId, patch = {}) {
   return item;
 }
 
-export function setStatuses(itemIds, status, by = '') {
+export function setStatuses(itemIds, status, by = '', kind = 'guest') {
   if (!STATUS_KEYS.includes(status)) {
     const err = new Error('未知状态');
     err.status = 400;
@@ -731,13 +964,17 @@ export function setStatuses(itemIds, status, by = '') {
   const changed = [];
   const touched = new Map();
   const lastItem = new Map();
+  // 一次批量勾选出多条记录，用同一个 batch 串起来，看档案时知道哪些是同一只手一次点的
+  const batch = id(6);
   for (const itemId of itemIds) {
     const found = resolveItem(itemId);
     if (!found) continue;
+    const prev = found.item.status;
     found.item.status = status;
     found.item.statusBy = signer;
     found.item.statusAt = stamp;
     found.item.updatedAt = Date.now();
+    archive(found.bundle, 'status', { by: signer, kind, item: found.item, data: { status, from: prev, batch } });
     changed.push(found.item.id);
     lastItem.set(found.bundle, found.item.name);
     touched.set(found.bundle, (touched.get(found.bundle) ?? 0) + 1);
@@ -771,11 +1008,12 @@ export function markMissing(itemId) {
   found.item.updatedAt = Date.now();
   found.bundle.updatedAt = found.item.updatedAt;
   persist();
+  archive(found.bundle, 'item:missing', { by: '系统', kind: 'system', item: found.item });
   emit('bundle:items', found.bundle, { itemId, action: 'missing' });
   return found.item;
 }
 
-export function addNote(itemId, { text, author, t }) {
+export function addNote(itemId, { text, author, t, kind = 'guest' }) {
   const found = resolveItem(itemId);
   if (!found) return null;
   const clean = String(text ?? '').trim().slice(0, 4000);
@@ -796,11 +1034,17 @@ export function addNote(itemId, { text, author, t }) {
   found.bundle.updatedAt = note.createdAt;
   logAction(found.bundle, { by: note.author, action: 'note', item: found.item.name });
   persist();
+  archive(found.bundle, 'note', {
+    by: note.author,
+    kind,
+    item: found.item,
+    data: { text: note.text, t: note.t, noteId: note.id },
+  });
   emit('bundle:items', found.bundle, { itemId, action: 'note', actor: note.author });
   return note;
 }
 
-export function removeNote(itemId, noteId, by, strict = false) {
+export function removeNote(itemId, noteId, by, strict = false, kind = 'guest') {
   const found = resolveItem(itemId);
   if (!found) return null;
   const note = found.item.notes.find((n) => n.id === noteId);
@@ -811,6 +1055,13 @@ export function removeNote(itemId, noteId, by, strict = false) {
   found.bundle.updatedAt = found.item.updatedAt;
   logAction(found.bundle, { by, action: 'note-remove', item: found.item.name });
   persist();
+  // 删掉的备注原文必须留在档案里：谁撤了谁的意见，事后是要对得上的
+  archive(found.bundle, 'note:remove', {
+    by,
+    kind,
+    item: found.item,
+    data: { text: note.text, t: note.t, noteId, noteBy: note.author },
+  });
   emit('bundle:items', found.bundle, { itemId, action: 'note-remove' });
   return note;
 }
@@ -823,7 +1074,7 @@ function touchMark(found) {
   found.bundle.updatedAt = found.item.updatedAt;
 }
 
-export function addMark(itemId, { t, author }) {
+export function addMark(itemId, { t, author, kind = 'guest' }) {
   const found = resolveItem(itemId);
   if (!found) return null;
   if (found.item.kind !== 'video' && found.item.kind !== 'audio') {
@@ -841,11 +1092,12 @@ export function addMark(itemId, { t, author }) {
   touchMark(found);
   logAction(found.bundle, { by: mark.author, action: 'mark', item: found.item.name });
   persist();
+  archive(found.bundle, 'mark', { by: mark.author, kind, item: found.item, data: { t: mark.t, markId: mark.id } });
   emit('bundle:items', found.bundle, { itemId, action: 'mark', actor: mark.author });
   return mark;
 }
 
-export function moveMark(itemId, markId, { t, by }, strict = false) {
+export function moveMark(itemId, markId, { t, by }, strict = false, kind = 'guest') {
   const found = resolveItem(itemId);
   if (!found) return null;
   const mark = (found.item.marks ?? []).find((m) => m.id === markId);
@@ -853,16 +1105,23 @@ export function moveMark(itemId, markId, { t, by }, strict = false) {
   assertMine(mark.author, by, strict, '移动');
   const seconds = clampSeconds(t, 3);
   if (seconds === null) throw markError(400, '时间点无效');
+  const from = mark.t;
   mark.t = seconds;
   found.item.marks.sort((a, b) => a.t - b.t);
   touchMark(found);
   logAction(found.bundle, { by: by ?? mark.author, action: 'mark-move', item: found.item.name });
   persist();
+  archive(found.bundle, 'mark:move', {
+    by: by ?? mark.author,
+    kind,
+    item: found.item,
+    data: { from, to: seconds, markId },
+  });
   emit('bundle:items', found.bundle, { itemId, action: 'mark-move', actor: by ?? mark.author });
   return mark;
 }
 
-export function removeMark(itemId, markId, by, strict = false) {
+export function removeMark(itemId, markId, by, strict = false, kind = 'guest') {
   const found = resolveItem(itemId);
   if (!found) return null;
   const mark = (found.item.marks ?? []).find((m) => m.id === markId);
@@ -872,17 +1131,29 @@ export function removeMark(itemId, markId, by, strict = false) {
   touchMark(found);
   logAction(found.bundle, { by: by ?? mark.author, action: 'mark-remove', item: found.item.name });
   persist();
+  archive(found.bundle, 'mark:remove', {
+    by: by ?? mark.author,
+    kind,
+    item: found.item,
+    data: { t: mark.t, markId, markBy: mark.author },
+  });
   emit('bundle:items', found.bundle, { itemId, action: 'mark-remove' });
   return mark;
 }
 
-export async function removeItem(itemId, by = '') {
+export async function removeItem(itemId, by = '', kind = 'owner') {
   const found = resolveItem(itemId);
   if (!found) return false;
   const { bundle, item } = found;
   bundle.items = bundle.items.filter((i) => i.id !== itemId);
   itemIndex.delete(itemId);
   logAction(bundle, { by, action: 'remove', item: item.name });
+  archive(bundle, 'item:remove', {
+    by,
+    kind,
+    item,
+    data: { notes: item.notes.length, marks: (item.marks ?? []).length, status: item.status },
+  });
   if (!item.absPath) {
     await fsp.rm(found.file, { force: true });
     await releaseBlob(item.digest);
@@ -914,13 +1185,13 @@ export function findCopyDuplicates(referenceBundle) {
   return out;
 }
 
-export function totals() {
-  const bundles = db.bundles.length;
-  const items = db.bundles.reduce((sum, b) => sum + b.items.filter((i) => !i.pending).length, 0);
-  const bytes = db.bundles.reduce((sum, b) => sum + b.items.reduce((s, i) => s + i.size, 0), 0);
-  const mountedBytes = db.bundles
+export function totals({ ownerId = null } = {}) {
+  const list = ownerId ? db.bundles.filter((b) => b.ownerId === ownerId) : db.bundles;
+  const items = list.reduce((sum, b) => sum + b.items.filter((i) => !i.pending).length, 0);
+  const bytes = list.reduce((sum, b) => sum + b.items.reduce((s, i) => s + i.size, 0), 0);
+  const mountedBytes = list
     .filter((b) => b.mode === 'reference')
     .reduce((sum, b) => sum + b.items.reduce((s, i) => s + i.size, 0), 0);
-  const missing = db.bundles.reduce((sum, b) => sum + b.items.filter((i) => i.missing).length, 0);
-  return { bundles, items, bytes, mountedBytes, missing, dataDir: config.dataDir };
+  const missing = list.reduce((sum, b) => sum + b.items.filter((i) => i.missing).length, 0);
+  return { bundles: list.length, items, bytes, mountedBytes, missing, dataDir: config.dataDir };
 }

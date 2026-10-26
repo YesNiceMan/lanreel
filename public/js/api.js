@@ -40,13 +40,44 @@ export const api = {
   bundle: (ref) => request(`/api/bundles/${encodeURIComponent(ref)}`),
   share: (token) => request(`/api/share/${encodeURIComponent(token)}`),
   createBundle: (name, description) => post('/api/bundles', { name, description }),
-  /** 零拷贝挂载本机目录（只能在本机浏览器里调用） */
+  /** 零拷贝挂载目录（本机任意路径；远程只能落在机主设的 MOUNT_ROOTS 里） */
   mount: (path, name) => post('/api/mounts', { path, name }),
+  /** 浏览服务器上的目录（只列文件夹）：远程成员挑挂载路径用 */
+  browse: (path = '') => request(`/api/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   /** 让本机弹系统文件夹选择器，返回绝对路径（浏览器自己拿不到） */
   pickFolder: () => post('/api/pick-folder', {}),
   rescan: (ref) => post(`/api/bundles/${encodeURIComponent(ref)}/rescan`, {}),
   updateBundle: (ref, data) => patch(`/api/bundles/${encodeURIComponent(ref)}`, data),
+  /** 撤下归档：素材夹没了，评审记录和封面留在 data/archive/ 里 */
   deleteBundle: (ref) => request(`/api/bundles/${encodeURIComponent(ref)}`, { method: 'DELETE' }),
+  /** 彻底删除：连档案一起抹掉，没有挽回手段 */
+  purgeBundle: (ref) => request(`/api/bundles/${encodeURIComponent(ref)}?purge=1`, { method: 'DELETE' }),
+
+  // ── 评审档案（机主专属）────────────────────────────────────────────────
+  archiveBundles: () => request('/api/archive'),
+  archiveRecords: (ref, filter = {}) => {
+    const params = new URLSearchParams();
+    if (filter.who) params.set('who', filter.who);
+    if (filter.op) params.set('op', filter.op);
+    if (filter.q) params.set('q', filter.q);
+    const qs = params.toString();
+    return request(`/api/archive/${encodeURIComponent(ref)}${qs ? `?${qs}` : ''}`);
+  },
+  archiveExportHref: (ref, fmt, filter = {}) => {
+    const params = new URLSearchParams({ fmt });
+    if (filter.who) params.set('who', filter.who);
+    if (filter.op) params.set('op', filter.op);
+    if (filter.q) params.set('q', filter.q);
+    return `/api/archive/${encodeURIComponent(ref)}/export?${params}`;
+  },
+  archivePosterHref: (ref, itemId) => `/api/archive/${encodeURIComponent(ref)}/posters/${encodeURIComponent(itemId)}`,
+
+  // ── 成员：机主发邀请链接，同事点开换一枚 Cookie ──────────────────────────
+  members: () => request('/api/members'),
+  inviteMember: (name) => post('/api/members', { name }),
+  revokeMember: (ref) => post(`/api/members/${encodeURIComponent(ref)}/revoke`, {}),
+  restoreMember: (ref) => post(`/api/members/${encodeURIComponent(ref)}/restore`, {}),
+  leaveMember: () => post('/api/member/leave', {}),
 
   deleteItem: (itemId) => request(`/api/items/${encodeURIComponent(itemId)}`, { method: 'DELETE' }),
   patchItem: (itemId, data) => patch(`/api/items/${encodeURIComponent(itemId)}`, data),

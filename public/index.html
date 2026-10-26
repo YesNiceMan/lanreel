@@ -25,6 +25,12 @@
       <span class="pill" data-mount="server">正在连接本机服务…</span>
       <span class="grow"></span>
       <button class="btn btn--sm" data-action="who" type="button"></button>
+      <a class="btn btn--sm" href="/archive" title="评审记录档案：素材夹撤下之后，谁说过什么仍然查得到">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+          <path d="M3 6h18v4H3zM5 10v10h14V10M10 14h4" />
+        </svg>
+        档案<span data-mount="archivecount"></span>
+      </a>
       <button class="btn btn--ghost btn--sm" data-action="help" type="button">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
           <rect x="2.5" y="6" width="19" height="13" rx="2.5" />
@@ -49,11 +55,11 @@
         <div class="intake" data-mount="intake">
           <div class="intake__head">
             <h2 class="panel-title">开始使用</h2>
-            <span class="dim t-sm">两种方式，按素材所在位置选</span>
+            <span class="dim t-sm" data-mount="intake-note">两种方式，按素材所在位置选</span>
           </div>
 
           <div class="intake__grid">
-            <div class="mode">
+            <div class="mode" data-mount="mount-mode">
               <div class="mode__head">
                 <span class="mode__icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
@@ -65,7 +71,7 @@
                 <span class="tip tip--left">
                   <button class="tip__btn" type="button" aria-label="关于挂载本机目录" aria-describedby="tip-mount">?</button>
                   <span class="tip__bubble" id="tip-mount" role="tooltip">
-                    素材留在原目录不复制，data/ 里只多几张浏览器抓的封面；删除素材夹只解除分享，绝不碰你的原始文件。源目录新增文件后点「重新扫描」即可。挂载与素材库管理只对运行 LanReel 的这台电脑开放。
+                    素材留在原目录不复制，data/ 里只多几张浏览器抓的封面；删除素材夹只解除分享，绝不碰你的原始文件。源目录新增文件后点「重新扫描」即可。本机随时能挂；别的设备要机主启动时设了 MOUNT_ROOTS 才能挂，而且只能挑白名单里的目录。
                   </span>
                 </span>
               </div>
@@ -82,7 +88,7 @@
                 <button class="btn btn--primary" data-action="pick-mount" type="button">浏览…</button>
                 <button class="btn btn--quiet" data-action="mount" type="button">挂载</button>
               </div>
-              <p class="mode__note">「浏览…」直接弹出系统文件夹选择器，不用手打路径</p>
+              <p class="mode__note" data-mount="mount-note">「浏览…」直接弹出系统文件夹选择器，不用手打路径</p>
             </div>
             <div class="mode" data-mount="dropzone">
               <div class="mode__head">
@@ -127,6 +133,12 @@
             <h2 class="panel-title">素材夹</h2>
           </div>
           <span class="dim" data-mount="listmeta"></span>
+          <button class="btn btn--sm" data-action="invite" type="button" hidden>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+              <path d="M8 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2 20a6 6 0 0 1 12 0M16 5a3 3 0 1 1 0 6M17 14a6 6 0 0 1 5 6" />
+            </svg>
+            邀请同事
+          </button>
         </div>
         <div class="toolbar" data-mount="toolbar">
           <label class="search">

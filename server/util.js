@@ -161,7 +161,7 @@ export function cookieValue(header, name) {
   return '';
 }
 
-const SKIP_DIR = new Set(['.git', 'node_modules', '.Trash', '__MACOSX', '.spotlight-V100', '.fseventsd']);
+export const SKIP_DIR = new Set(['.git', 'node_modules', '.Trash', '__MACOSX', '.spotlight-V100', '.fseventsd']);
 
 /** 递归扫描一个本机目录，返回可入库的文件清单（不复制任何字节）。 */
 export async function walkMedia(root, { maxFiles = 3000, maxDepth = 8 } = {}) {

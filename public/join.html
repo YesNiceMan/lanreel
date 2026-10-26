@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>接受邀请 · LanReel</title>
+    <meta name="description" content="机主发来的邀请链接：填一次名字，就能在这台局域网放映厅里建自己的素材夹。" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/tokens.css" />
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/error.css" />
+  </head>
+  <body>
+    <main class="stop stop--wide">
+      <h1>机主邀请你进来建自己的素材夹</h1>
+      <p>填一次名字就固定下来 —— 你打的每一个状态、写的每一条备注，档案里都记这个名字，同事知道是谁说的。</p>
+      <form class="stop__form" data-ref="join-form" autocomplete="off">
+        <p class="stop__lead" data-ref="join-lead">正在确认这条邀请链接…</p>
+        <div class="stop__row">
+          <input class="stop__input" data-ref="join-name" type="text" placeholder="例如：小李 / 剪辑组-阿哲" maxlength="24" aria-label="你的名字" />
+          <button class="stop__btn" type="submit" disabled>进来</button>
+        </div>
+        <p class="stop__note" data-ref="join-note" role="status"></p>
+      </form>
+      <p class="stop__alt">你只能看到自己建的素材夹，别人的项目、机主的口令都与你无关。只是想看片评审的话，用机主发的 <code>/s/XXXXXXXX</code> 分享链接更快，不用进这里。</p>
+    </main>
+    <script src="/js/join.js" defer></script>
+  </body>
+</html>

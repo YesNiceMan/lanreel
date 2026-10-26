@@ -5,7 +5,7 @@ import { STATUS_BY_KEY } from './statuses.js';
 import { createReview } from './review.js';
 import { collectDropped, planFiles, UploadJob } from './uploader.js';
 import { connectSync } from './sync.js';
-import { getActor, paintNameButton } from './identity.js';
+import { getActor, paintNameButton, setLockedName } from './identity.js';
 import { backfillPosters, needsWork } from './backfill.js';
 
 const mount = (name) => qs(`[data-mount="${name}"]`);
@@ -14,6 +14,8 @@ const actor = () => getActor() || '本机管理员';
 let bundles = [];
 let totals = { bundles: 0, items: 0, bytes: 0 };
 let storage = { files: 0, onDisk: 0 };
+let archiveStats = { bundles: 0, unlisted: 0, records: 0, posters: 0 };
+let members = [];
 let limits = { maxUploadBytes: 4 * 1024 ** 3, maxFilesPerBundle: 3000 };
 let lan = [];
 let port = location.port || '2026';
@@ -25,6 +27,10 @@ let mode = localStorage.getItem('lanreel-mode') || 'grid';
 /** 机主口令：只有运行 LanReel 的这台电脑拿得到，用来在别的设备上管理素材库 */
 let ownerInfo = null;
 let ownerAsked = false;
+/** 受邀成员身份（机主为 null）：决定这一页能看到哪些动作，署名也由它锁死 */
+let me = null;
+/** 这台服务允许谁挂目录：本机随时能挂，远程要机主设了 MOUNT_ROOTS */
+let mountCap = { allowed: true, local: true, roots: [] };
 
 // ── 主题 ──────────────────────────────────────────────────────────────────
 const root = document.documentElement;
@@ -107,7 +113,8 @@ function paintTotals() {
     stat(String(bundles.length), '素材夹'),
     stat(String(sum.items), '素材'),
     stat(fmtBytes(sum.bytes), '素材合计', '所有素材体积相加。挂载模式的文件留在原目录，不进项目、不占 data/。'),
-    stat(fmtBytes(storage.onDisk), 'data/ 实占', 'data/ 目录真实占用（按 inode 去重）：只有复制入库的字节和浏览器抓的封面。'),
+    // data/ 实占是这台机器的磁盘账，成员看不到也不该看到
+    me ? null : stat(fmtBytes(storage.onDisk), 'data/ 实占', 'data/ 目录真实占用（按 inode 去重）：只有复制入库的字节和浏览器抓的封面。'),
     stat(sum.duration ? fmtTotalDur(sum.duration) : '—', '总时长'),
     sum.missing
       ? stat(String(sum.missing), '源文件丢失', '这些素材在源目录里已经找不到了（被移动、改名或外接盘断开）。把文件放回原位后点「重新扫描」。')
@@ -115,7 +122,181 @@ function paintTotals() {
   );
 }
 
+/** 顶栏的档案入口：撤下的夹子已经不在素材库里了，得有个地方数得清还剩多少记录 */
+function paintArchiveLink() {
+  const node = qs('[data-mount="archivecount"]');
+  if (!node) return;
+  clear(node);
+  if (!archiveStats.records) return;
+  node.append(` · ${archiveStats.records}`);
+  if (archiveStats.unlisted) node.title = `其中 ${archiveStats.unlisted} 个素材夹已撤下，记录仍然在档`;
+}
+
+/**
+ * 机主、成员、以及「这台服务开没开远程挂载」三种情况看到的首页不一样。
+ * 挂载面板只对能挂的人出现；「浏览…」这种弹在机主屏幕上的动作，远程的人换成目录浏览器。
+ */
+function applyRole() {
+  const member = Boolean(me);
+  const canMount = mountCap.allowed !== false;
+  const mountPanel = mount('mount-mode');
+  if (mountPanel) mountPanel.hidden = !canMount;
+  const note = mount('intake-note');
+  if (note) {
+    note.textContent = canMount
+      ? member
+        ? '两种方式都行；挂载只能挑机主放行的那几个目录'
+        : '两种方式，按素材所在位置选'
+      : '上传入库；机主还没开放远程挂载（他启动时设 MOUNT_ROOTS 就能挂共享存储上的目录）';
+  }
+  const mountNote = mount('mount-note');
+  if (mountNote) {
+    mountNote.textContent = mountCap.local === false
+      ? `「挑目录…」在机主放行的目录里挑：${(mountCap.roots ?? []).join(' / ') || '（没有可挂的根目录）'}`
+      : '「浏览…」直接弹出系统文件夹选择器，不用手打路径';
+  }
+  const pickBtn = qs('[data-action="pick-mount"]');
+  if (pickBtn) pickBtn.textContent = mountCap.local === false ? '挑目录…' : '浏览…';
+  const invite = qs('[data-action="invite"]');
+  if (invite) invite.hidden = member;
+  if (member) setLockedName(me.name);
+  paintNameButton(qs('[data-action="who"]'));
+}
+
+const underRoots = (path, roots) => (roots ?? []).some((root) => {
+  const base = String(root).replace(/\/+$/, '');
+  return path === base || path.startsWith(`${base}/`);
+});
+
+/** 目录浏览器：只列文件夹，一层一层走，选中哪层就挂那层 */
+async function browseSheet(path = '') {
+  let data;
+  try {
+    data = await api.browse(path);
+  } catch (err) {
+    toast(friendly(err.message), 'err');
+    return;
+  }
+  const parentOk = data.parent && underRoots(data.parent, data.roots);
+  const rows = data.dirs.length
+    ? data.dirs.map((dir) => h('button', {
+        class: 'arch-card browse__row',
+        type: 'button',
+        onClick: () => {
+          sheet.close();
+          browseSheet(dir.path);
+        },
+      }, icon('folder', 15), h('span', { class: 'clip grow' }, dir.name), icon('next', 14)))
+    : [h('p', { class: 'dim', style: 'font-size:var(--text-sm)' }, '这个目录下面没有子目录，直接挂这一层就行')];
+  const sheet = openScrim(h('div', { class: 'sheet sheet--sm' },
+    h('div', { class: 'sheet-head' },
+      h('div', { class: 'col', gap: '1', style: 'min-width:0' },
+        h('span', { class: 'eyebrow' }, '挑要挂载的目录'),
+        h('span', { class: 'mono clip', style: 'font-size:var(--text-2xs)' }, data.path)),
+      h('button', { class: 'btn btn--icon btn--ghost', type: 'button', onClick: () => sheet.close() }, icon('x'))),
+    h('div', { class: 'sheet-body' },
+      h('div', { class: 'col', gap: '2' },
+        parentOk
+          ? h('button', {
+              class: 'arch-card browse__row',
+              type: 'button',
+              onClick: () => {
+                sheet.close();
+                browseSheet(data.parent);
+              },
+            }, icon('prev', 15), h('span', { class: 'clip grow' }, '上一级'), icon('next', 14))
+          : null,
+        ...rows,
+        data.truncated ? h('p', { class: 'dim', style: 'font-size:var(--text-2xs)' }, '子目录太多，只列了前 500 个') : null)),
+    h('div', { class: 'sheet-foot' },
+      h('button', { class: 'btn btn--ghost', type: 'button', onClick: () => sheet.close() }, '取消'),
+      h('button', {
+        class: 'btn btn--primary',
+        type: 'button',
+        onClick: () => {
+          sheet.close();
+          mountInput.value = data.path;
+          mountFolder(data.path);
+        },
+      }, icon('link', 14), '挂这一层'))));
+}
+
+// ── 邀请同事 ──────────────────────────────────────────────────────────────
+async function copyAndToast(text, okMessage) {
+  if (await copyText(text)) toast(okMessage, 'ok');
+  else window.prompt('复制链接：', text);
+}
+
+function inviteCard(member, invite) {
+  const link = invite?.link ?? '';
+  return h('div', { class: 'spread', style: 'gap:var(--space-3)' },
+    h('div', { class: 'col', gap: '1', style: 'min-width:0' },
+      h('b', { class: 'clip' }, member.name || '还没填名字的同事'),
+      h('span', { class: 'dim clip', style: 'font-size:var(--text-2xs)' },
+        member.bundles ? `${member.bundles} 个素材夹 · ` : '还没有建夹子 · ',
+        member.revoked ? '已停用' : `受邀于 ${new Date(member.createdAt).toLocaleDateString('zh-CN')}`)),
+    h('div', { class: 'cluster cluster-tight' },
+      link
+        ? h('button', { class: 'btn btn--sm btn--primary', type: 'button', onClick: () => copyAndToast(link, '邀请链接已复制，发给他就行') }, icon('copy', 14), '复制链接')
+        : null,
+      h('button', {
+        class: 'btn btn--sm btn--quiet',
+        type: 'button',
+        onClick: async () => {
+          try {
+            member.revoked ? await api.restoreMember(member.id) : await api.revokeMember(member.id);
+            await load();
+            invitePanel();
+          } catch (err) {
+            toast(friendly(err.message), 'err');
+          }
+        },
+      }, member.revoked ? '恢复' : '停用')));
+}
+
+/** 机主这一页只管三件事：发链接、看谁进来了、把走掉的人停掉 */
+function invitePanel() {
+  const nameInput = h('input', { class: 'input', placeholder: '例如：小李（可留空，让他自己填）', maxlength: '24' });
+  const list = h('div', { class: 'col', gap: '2' },
+    members.length
+      ? members.map((m) => inviteCard(m))
+      : [h('p', { class: 'dim', style: 'font-size:var(--text-sm)' }, '还没有邀请过任何人')]);
+  const sheet = openScrim(h('div', { class: 'sheet sheet--sm' },
+    h('div', { class: 'sheet-head' },
+      h('span', { class: 'eyebrow' }, '邀请同事'),
+      h('button', { class: 'btn btn--icon btn--ghost', type: 'button', onClick: () => sheet.close() }, icon('x'))),
+    h('div', { class: 'sheet-body' },
+      h('div', { class: 'col', gap: '4' },
+        h('p', { class: 'muted', style: 'font-size:var(--text-sm)' },
+          '拿到链接的人能建自己的素材夹、上传、分享给同事评审，但只看得见自己名下的东西 —— 不是账号，没有密码，链接本身就是凭证。'),
+        h('div', { class: 'field' }, h('label', { class: 'muted' }, '给这位同事起个名'), nameInput),
+        h('button', {
+          class: 'btn btn--primary',
+          type: 'button',
+          onClick: async () => {
+            try {
+              const result = await api.inviteMember(nameInput.value.trim());
+              await load();
+              sheet.close();
+              copyAndToast(result.invite.link, `已生成 ${result.member.name || ''} 的邀请链接并复制`);
+              toast('把这条链接发给对方就行（同网可开）', 'info', 4200);
+            } catch (err) {
+              toast(friendly(err.message), 'err');
+            }
+          },
+        }, icon('plus', 14), '生成邀请链接'),
+        h('div', { class: 'cluster cluster-tight', style: 'margin-top:var(--space-2)' },
+          h('span', { class: 'eyebrow' }, `已邀请 ${members.length} 人`)),
+        list)),
+    h('div', { class: 'sheet-foot' },
+      h('span', { class: 'dim', style: 'font-size:var(--text-2xs)' }, '停用只作废链接，他建过的夹子与留下的记录都还在'),
+      h('button', { class: 'btn btn--ghost', type: 'button', onClick: () => sheet.close() }, '关闭'))));
+}
+
+qs('[data-action="invite"]').addEventListener('click', invitePanel);
+
 function paintServer(state = 'ok') {
+
   const node = mount('server');
   clear(node);
   const addr = lan[0]?.address;
@@ -200,13 +381,21 @@ function bundleCard(bundle) {
           { label: '重命名素材夹', ico: 'pencil', onClick: () => renameBundle(bundle) },
           { label: '导出评审表 CSV', ico: 'download', href: exportHref(bundle, 'csv') },
           { label: '导出完整记录 JSON', ico: 'doc', href: exportHref(bundle, 'json') },
+          { label: '看评审档案', ico: 'archive', href: `/archive?bundle=${encodeURIComponent(bundle.id)}` },
           {
-            label: bundle.mode === 'reference' ? '解除挂载' : '删除素材夹',
+            label: bundle.mode === 'reference' ? '撤下挂载并归档' : '删除并归档记录',
+            ico: 'archive',
+            danger: true,
+            onClick: () => confirmRemove(bundle, false),
+          },
+          // 连档案一起抹掉是全站级的破坏动作，成员没有这个权限（服务端也会挡）
+          me ? null : {
+            label: '彻底删除（连档案）',
             ico: 'trash',
             danger: true,
-            onClick: () => confirmDelete(bundle),
+            onClick: () => confirmRemove(bundle, true),
           },
-        ])),
+        ].filter(Boolean))),
     ),
   );
 }
@@ -228,7 +417,9 @@ function paintBundles() {
     empty.append(
       icon('folder', 30),
       h('h3', null, '还没有素材夹'),
-      h('p', null, '上方二选一：「上传入库」会把文件复制一份到 data/；素材本来就在这台机器上的话，用「挂载本机目录」原地放映、不占磁盘。'),
+      h('p', null, me
+        ? '上方挑一个文件夹，或把整个文件夹拖进来就能入库；挂载本机目录是机主在那台电脑上做的事，想挂就问机主。'
+        : '上方二选一：「上传入库」会把文件复制一份到 data/；素材本来就在这台机器上的话，用「挂载本机目录」原地放映、不占磁盘。'),
     );
   } else if (!list.length) {
     empty.hidden = false;
@@ -254,6 +445,10 @@ async function load() {
   const data = await api.bundles();
   totals = data.totals;
   storage = data.storage ?? storage;
+  archiveStats = data.archive ?? archiveStats;
+  members = data.members ?? members;
+  me = data.me ?? null;
+  mountCap = data.mount ?? mountCap;
   lan = data.lan;
   port = String(data.port || port);
   bundles = data.bundles;
@@ -264,6 +459,8 @@ async function load() {
         const full = await api.bundle(b.id);
         b.previews = full.items.slice(0, 4).map((i) => i.posterUrl);
         b.previewsName = full.items.map((i) => i.name);
+        b.noteCount = full.items.reduce((sum, i) => sum + i.notes.length, 0);
+        b.markCount = full.items.reduce((sum, i) => sum + (i.marks ?? []).length, 0);
       } catch {
         b.previews = [];
       }
@@ -271,10 +468,13 @@ async function load() {
   );
   paintBundles();
   paintServer('ok');
+  paintArchiveLink();
+  applyRole();
   const mountedNote = totals.mountedBytes ? `，其中 ${fmtBytes(totals.mountedBytes)} 是挂载素材、留在原目录` : '';
   const missingNote = totals.missing ? ` · ⚠ ${totals.missing} 个源文件读不到` : '';
-  mount('storage').textContent =
-    `数据目录 ${totals.dataDir ?? 'data/'} · ${totals.bundles} 夹 / ${totals.items} 素材 / 素材合计 ${fmtBytes(totals.bytes)}${mountedNote} · data/ 实占 ${fmtBytes(storage.onDisk)}${missingNote}`;
+  mount('storage').textContent = me
+    ? `你的素材夹 ${totals.bundles} 个 / ${totals.items} 个素材 / 素材合计 ${fmtBytes(totals.bytes)}${missingNote}`
+    : `数据目录 ${totals.dataDir ?? 'data/'} · ${totals.bundles} 夹 / ${totals.items} 素材 / 素材合计 ${fmtBytes(totals.bytes)}${mountedNote} · data/ 实占 ${fmtBytes(storage.onDisk)}${missingNote}`;
 }
 
 // ── 入库 ──────────────────────────────────────────────────────────────────
@@ -574,7 +774,7 @@ async function browseMount() {
 }
 
 qs('[data-action="mount"]').addEventListener('click', () => mountFolder());
-qs('[data-action="pick-mount"]').addEventListener('click', browseMount);
+qs('[data-action="pick-mount"]').addEventListener('click', () => (mountCap.local === false ? browseSheet() : browseMount()));
 mountInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') mountFolder();
 });
@@ -599,29 +799,60 @@ async function renameBundle(bundle) {
   setTimeout(() => input.select(), 60);
 }
 
-function confirmDelete(bundle) {
+/**
+ * 撤下归档 vs 彻底删除。
+ * 默认走撤下：素材夹和分享链接没了，评审记录与封面留在 data/archive/，随时查得回来。
+ * 只有勾选「连档案一起删」才走 purge —— 那个没有挽回手段，所以文案把丢多少条记录摆眼前。
+ */
+function confirmRemove(bundle, purge) {
   const mounted = bundle.mode === 'reference';
-  const detail = mounted
-    ? `这个夹子只是挂载了「${bundle.root || '源目录'}」里的 ${bundle.stats.total} 个素材，删除只是解除分享：你的原始文件一个字节都不会动，data/ 里由我们生成的封面会一并清掉。`
-    : `这个夹子里的 ${bundle.stats.total} 个素材是复制进 data/ 的副本，删除会把这份副本移除（你当初上传的那份源文件不受影响）。`;
+  const notes = bundle.noteCount ?? 0;
+  const marks = bundle.markCount ?? 0;
+  const media = mounted
+    ? `这个夹子挂载了「${bundle.root || '源目录'}」里的 ${bundle.stats.total} 个素材，撤下之后源文件一个字节都不动`
+    : `这个夹子里的 ${bundle.stats.total} 个素材是复制进 data/ 的副本，撤下会把这份副本移除（你当初上传的那份源文件不受影响）`;
   const sheet = openScrim(h('div', { class: 'sheet sheet--sm' },
-    h('div', { class: 'sheet-head' }, h('span', { class: 'eyebrow', style: 'color:var(--tone-danger)' }, mounted ? '解除挂载' : '删除素材夹')),
+    h('div', { class: 'sheet-head' },
+      h('span', { class: 'eyebrow', style: purge ? 'color:var(--tone-danger)' : null },
+        purge ? '彻底删除（含档案）' : mounted ? '撤下挂载并归档' : '删除并归档记录')),
     h('div', { class: 'sheet-body' },
-      h('p', null, `确定删除「${bundle.name}」吗？`),
-      h('p', { class: 'muted', style: 'font-size:var(--text-sm)' }, detail),
-      h('p', { class: 'dim', style: 'font-size:var(--text-sm)' }, '分享链接同时失效，里面的评审状态与备注一并作废，此操作不可撤销。')),
+      h('div', { class: 'col', gap: '3' },
+        h('p', null, `确定处理「${bundle.name}」吗？`),
+        h('p', { class: 'muted', style: 'font-size:var(--text-sm)' }, `${media}。分享链接同时失效。`),
+        h('p', {
+          class: 'dim',
+          style: purge ? 'font-size:var(--text-sm);color:var(--tone-danger)' : 'font-size:var(--text-sm)',
+        }, purge
+          ? `评审档案会一起抹掉：${notes} 条备注、${marks} 个时间点${mounted ? '、已归档的封面' : ''}，删了就真的找不回来了。此操作不可撤销。`
+          : `评审记录不会跟着消失：${notes} 条备注、${marks} 个时间点会留在 data/archive/，在「评审档案」里随时查得到。`),
+        purge || me
+          ? null
+          : h('label', { class: 'check' },
+              h('input', { type: 'checkbox', dataset: { ref: 'purge-switch' } }),
+              h('span', { class: 'muted', style: 'font-size:var(--text-sm)' }, '连评审档案一起删除（不可恢复）')))),
     h('div', { class: 'sheet-foot' },
       h('button', { class: 'btn btn--ghost', type: 'button', onClick: () => sheet.close() }, '取消'),
-      h('button', { class: 'btn btn--danger', type: 'button', onClick: async () => {
-        try {
-          await api.deleteBundle(bundle.id);
-          sheet.close();
-          toast('已删除', 'ok');
-          await load();
-        } catch (err) {
-          toast(friendly(err.message), 'err');
-        }
-      } }, '确认删除'))));
+      h('button', { class: `btn ${purge ? 'btn--danger' : 'btn--primary'}`, type: 'button', onClick: commit },
+        purge ? '彻底删除' : mounted ? '确认撤下并归档' : '确认删除并归档'))));
+
+  async function commit() {
+    const alsoPurge = purge || sheet.content.querySelector('[data-ref="purge-switch"]')?.checked;
+    try {
+      if (alsoPurge) await api.purgeBundle(bundle.id);
+      else await api.deleteBundle(bundle.id);
+      sheet.close();
+      toast(
+        alsoPurge
+          ? `已彻底删除「${bundle.name}」，档案一并抹掉`
+          : `已撤下「${bundle.name}」，${notes} 条备注留在评审档案里`,
+        alsoPurge ? 'warn' : 'ok',
+        4200,
+      );
+      await load();
+    } catch (err) {
+      toast(friendly(err.message), 'err');
+    }
+  }
 }
 
 // ── 评审面板 ──────────────────────────────────────────────────────────────

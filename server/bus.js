@@ -9,7 +9,7 @@ export function addClient(res, filter = {}) {
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
   });
-  const client = { res, bundleId: filter.bundleId ?? null, token: filter.token ?? null };
+  const client = { res, bundleId: filter.bundleId ?? null, can: filter.can ?? null };
   res.write(`retry: 2000\n\n`);
   res.write(`event: hello\ndata: ${JSON.stringify({ ok: true, at: Date.now() })}\n\n`);
 
@@ -34,7 +34,10 @@ export function broadcast(payload) {
   if (!clients.size) return;
   const data = `event: sync\ndata: ${JSON.stringify(payload)}\n\n`;
   for (const client of clients) {
-    if (client.bundleId && payload.bundleId && payload.bundleId !== client.bundleId) continue;
+    // can() 是活的判定（成员刚建的夹子也算他的），订阅时算好的 id 列表会漏掉这一步
+    if (client.can) {
+      if (!client.can(payload)) continue;
+    } else if (client.bundleId && payload.bundleId && payload.bundleId !== client.bundleId) continue;
     client.res.write(data);
   }
 }
